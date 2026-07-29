@@ -1,0 +1,78 @@
+# Plan Council configuration.
+#
+# Panel composition is the one real choice here: every panelist reads your repository
+# itself, so add a model only if you are content for it to see this code.
+
+panel:
+  # Two ChatGPT models and two Claude models: a full panel on the two subscriptions
+  # that are active here. Model names are verified against these CLIs — `codex`
+  # rejects most ids on a ChatGPT account (gpt-5.2-codex and gpt-5.6 are not
+  # supported), so check with a trivial call before swapping one in.
+  - name: gpt
+    adapter: codex_cli
+    # model:                  # omit to use the default from ~/.codex/config.toml
+
+  - name: gpt-5-5
+    adapter: codex_cli
+    model: gpt-5.5
+
+  # These two spend the same subscription quota as the Claude Code session that
+  # launched the council.
+  - name: claude
+    adapter: claude_cli
+    model: opus            # alias (opus/sonnet/haiku/fable) or a full id
+                           # like claude-opus-4-8; omit for the CLI default
+
+  - name: claude-sonnet
+    adapter: claude_cli
+    model: sonnet
+
+  # Ollama Cloud panelists — re-enable when that subscription is active. Anything
+  # beyond the free tier answers 403 without one.
+  # - name: kimi
+  #   adapter: opencode_cli
+  #   model: ollama-cloud/kimi-k2.6
+  # - name: glm
+  #   adapter: opencode_cli
+  #   model: ollama-cloud/glm-5.2
+  # - name: deepseek
+  #   adapter: opencode_cli
+  #   model: ollama-cloud/deepseek-v4-pro
+
+protocol:
+  min_rounds: 2          # a first-round consensus is usually a shallow one
+  max_rounds: 5
+
+  # Cumulative real tokens across every call (each CLI's own usage; estimated only
+  # when a CLI reports none). Dominated by repo exploration, not the transcript: a
+  # panelist re-sends every file it reads on each agent-loop step, and providers
+  # without caching pay full price each time. A single 3-model run measured ~1.1M.
+  token_budget: 8000000
+
+  wall_clock_budget: 1800
+
+  # Summarise older rounds once the transcript passes this many tokens. Keep it
+  # below the smallest panelist's context window: the prompt is this plus the task,
+  # every plan, and the last two rounds verbatim.
+  compaction_threshold: 200000
+
+  anonymize: true
+  focus_roles: false     # V1: every panelist gets a byte-identical prompt
+
+  # Each panelist keeps talking in the same harness conversation where it explored
+  # the repo and wrote its plan, so it does not lose that context between rounds and
+  # only receives what it has not yet seen. Turn this off to send a full transcript
+  # reassembly every turn instead (cheaper per turn, but the panelist starts cold).
+  session_continuity: true
+
+  # Who summarises the transcript. Worth a strong model: everything the panel
+  # remembers about earlier rounds comes through it.
+  compaction_panelist: claude
+
+timeouts:
+  per_call: 300          # a discussion turn
+  per_call_phase1: 900   # the independent plan, including repo exploration
+
+# skip_with_note: an unresponsive panelist sits the round out; the session fails only
+# if fewer than 2 panelists remain. 'abort' stops at the first failure instead.
+on_failure: skip_with_note

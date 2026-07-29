@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plan-council"
+dynamic = ["version"]
+description = "Multi-model plan maturation council: independent agent plans, anonymous debate, unified digest"
+requires-python = ">=3.10"
+dependencies = ["pyyaml>=6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+council = "council.__main__:main"
+
+[tool.setuptools]
+packages = ["council", "council.adapters"]
+
+[tool.setuptools.package-data]
+council = ["static/*.html"]
+
+# Single source of truth for the version: council/__init__.py
+[tool.setuptools.dynamic]
+version = {attr = "council.__version__"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "council-plan": {
+      "description": "Read-only council panelist: explores a repository and reasons about it, but never modifies it.",
+      "mode": "primary",
+      "prompt": "You are reviewing a repository you must not modify. Investigate as deeply as you need using the read, grep, glob and list tools, then answer exactly what was asked of you. You have no ability to edit files or run commands, so do not propose to do either as part of your answer.",
+      "tools": {
+        "write": false,
+        "edit": false,
+        "patch": false,
+        "bash": false,
+        "task": false,
+        "todowrite": false,
+        "todoread": false,
+        "read": true,
+        "grep": true,
+        "glob": true,
+        "list": true
+      },
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+        "webfetch": "deny",
+        "external_directory": "allow"
+      }
+    }
+  }
+}
