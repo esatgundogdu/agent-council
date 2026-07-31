@@ -18,11 +18,16 @@ import json
 import tempfile
 from pathlib import Path
 
-from .base import Adapter, Reply, run_process
+from .base import WINDOWS, Adapter, Reply, run_process
 
 # ARG_MAX is 1 MiB on macOS and covers argv *and* the environment. Beyond this the
 # prompt goes in via `-f`, whose contents opencode inlines into the message.
-ARGV_PROMPT_LIMIT = 200_000
+#
+# Windows never puts the prompt on the command line at all: CreateProcess caps the
+# whole line at 32767 characters, and an npm-installed `opencode` is a .cmd shim whose
+# arguments cmd.exe re-parses, so a quote in a model's prose comes back mangled. The
+# attachment path sidesteps both.
+ARGV_PROMPT_LIMIT = 0 if WINDOWS else 200_000
 
 ATTACHED_PROMPT_MESSAGE = (
     "Your instructions are in the attached file. Read it in full and respond to it "
@@ -39,6 +44,8 @@ class OpencodeAdapter(Adapter):
         self.binary = kwargs.get("binary", "opencode")
         self.agent = kwargs.get("agent", "council-plan")
         self.config_path = kwargs.get("config_path")
+        #: Overridable so both delivery paths stay testable on either platform.
+        self.argv_prompt_limit = kwargs.get("argv_prompt_limit", ARGV_PROMPT_LIMIT)
 
     async def ask(
         self, prompt: str, cwd: str, timeout: int, session: str | None = None
@@ -83,7 +90,7 @@ class OpencodeAdapter(Adapter):
         opencode inlines an attached file into the message, so the model sees the
         same text either way. `-f` is variadic, hence the `--` before the message.
         """
-        if len(prompt.encode("utf-8")) <= ARGV_PROMPT_LIMIT:
+        if len(prompt.encode("utf-8")) <= self.argv_prompt_limit:
             return [prompt]
         prompt_file = tmpdir / "prompt.md"
         prompt_file.write_text(prompt, encoding="utf-8")

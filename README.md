@@ -64,6 +64,15 @@ Install the slash command:
 cp claude/commands/council.md ~/.claude/commands/council.md
 ```
 
+The same two steps in PowerShell — the heredoc and `/dev/null` are POSIX-only, and
+`council` closes the harness's stdin for you either way:
+
+```powershell
+"Reply with OK" | codex exec - --sandbox read-only --skip-git-repo-check
+opencode run --agent build -m ollama-cloud/kimi-k2.6 "Reply with OK"
+Copy-Item claude\commands\council.md $HOME\.claude\commands\council.md
+```
+
 ## Choosing the panel
 
 The default panel lives in [`council.yaml`](council.yaml). To see what you can pick:
