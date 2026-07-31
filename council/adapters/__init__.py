@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .base import Adapter, AdapterError, Reply, run_process
+from .base import Adapter, AdapterError, Reply, resolve_binary, run_process
 from .claude_cli import ClaudeAdapter
 from .codex_cli import CodexAdapter
 from .mock import MockAdapter
@@ -19,6 +19,7 @@ __all__ = [
     "Adapter",
     "AdapterError",
     "Reply",
+    "resolve_binary",
     "run_process",
     "REGISTRY",
     "build_adapter",

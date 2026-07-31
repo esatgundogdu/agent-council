@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from .adapters.base import resolve_binary
 from .config import PanelistConfig
 
 CODEX_CONFIG = Path.home() / ".codex" / "config.toml"
@@ -61,8 +62,13 @@ def normalise(text: str) -> str:
 def opencode_models(binary: str = "opencode") -> tuple[str, ...]:
     """Models opencode can currently reach, as 'provider/model' strings."""
     try:
+        # resolve_binary, or Windows never finds the `opencode.cmd` npm installs and
+        # every Ollama Cloud model silently disappears from the catalogue.
         proc = subprocess.run(
-            [binary, "models"], capture_output=True, text=True, timeout=60
+            [resolve_binary(binary), "models"],
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
     except (FileNotFoundError, subprocess.SubprocessError):
         return ()

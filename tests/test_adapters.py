@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from council.adapters.claude_cli import parse_claude_json
@@ -73,15 +74,23 @@ def test_empty_stream():
 
 # ---- prompt delivery ----------------------------------------------------
 
+# The threshold is 0 on Windows, so both delivery paths are exercised against an
+# explicit limit rather than the platform default, which is asserted separately.
+LIMIT = 1000
+
+
+def _adapter(limit: int = LIMIT) -> OpencodeAdapter:
+    return OpencodeAdapter(argv_prompt_limit=limit)
+
 
 def test_small_prompt_goes_on_the_command_line(tmp_path):
-    args = OpencodeAdapter()._prompt_args("short prompt", tmp_path)
+    args = _adapter()._prompt_args("short prompt", tmp_path)
     assert args == ["short prompt"]
 
 
 def test_large_prompt_is_attached_as_a_file(tmp_path):
-    prompt = "x" * (ARGV_PROMPT_LIMIT + 1)
-    args = OpencodeAdapter()._prompt_args(prompt, tmp_path)
+    prompt = "x" * (LIMIT + 1)
+    args = _adapter()._prompt_args(prompt, tmp_path)
 
     assert args[0] == "-f"
     # `--` is mandatory: -f is variadic and would otherwise swallow the message.
@@ -91,16 +100,24 @@ def test_large_prompt_is_attached_as_a_file(tmp_path):
 
 
 def test_the_limit_itself_still_uses_argv(tmp_path):
-    assert OpencodeAdapter()._prompt_args("x" * ARGV_PROMPT_LIMIT, tmp_path) == [
-        "x" * ARGV_PROMPT_LIMIT
-    ]
+    assert _adapter()._prompt_args("x" * LIMIT, tmp_path) == ["x" * LIMIT]
 
 
 def test_multibyte_prompts_are_measured_in_bytes(tmp_path):
     # 'é' is 2 bytes: a prompt under the limit in characters can exceed it in bytes.
-    prompt = "é" * (ARGV_PROMPT_LIMIT // 2 + 1)
-    assert len(prompt) < ARGV_PROMPT_LIMIT
-    assert OpencodeAdapter()._prompt_args(prompt, tmp_path)[0] == "-f"
+    prompt = "é" * (LIMIT // 2 + 1)
+    assert len(prompt) < LIMIT
+    assert _adapter()._prompt_args(prompt, tmp_path)[0] == "-f"
+
+
+def test_windows_always_attaches_the_prompt(tmp_path):
+    # CreateProcess caps the command line at 32767 chars and an npm `opencode` is a
+    # .cmd shim that re-parses its arguments, so argv is never used there.
+    expected = 0 if os.name == "nt" else 200_000
+    assert ARGV_PROMPT_LIMIT == expected
+
+    args = OpencodeAdapter()._prompt_args("even a tiny prompt", tmp_path)
+    assert (args[0] == "-f") is (os.name == "nt")
 
 
 # ---- codex real token usage (captured from codex-cli 0.145.0) ------------
