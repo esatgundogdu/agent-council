@@ -19,9 +19,13 @@ council up --open
 ```
 
 Idempotent: if a daemon is already running this reuses it and prints the same URL. It is
-detached, so it survives this turn and this session. Tell the user the URL in your first
-message — the browser is where they watch, intervene, and read each panelist's own
-history.
+detached, so it survives this turn and this session.
+
+**Do not report this URL as a result.** It opens an empty control plane and says nothing
+about whether a council exists — a user sent here before step 7 lands finds a blank page
+and no way to tell that nothing was ever convened. The URL worth giving them is the
+**session** URL that `council start` returns in step 7, and it is the first thing you
+should tell them.
 
 If this fails (not installed, no browser), say so once and carry on; `council start`
 starts the daemon anyway.
@@ -131,6 +135,17 @@ and `max` on the same panel is an order of magnitude of tokens and minutes.
 ```
 council start --task .council-task.md --project-dir . [--mode consult] [--context .council-context.md] [--seed plan.md] [--agents "..."] [--max-rounds N] --json
 ```
+
+**This is the step that convenes the council, and nothing before it has.** Writing the
+task file, writing the brief and opening the control plane all leave the user with
+exactly no council. So:
+
+- Do not tell the user a council is running until this command has returned a session id.
+- Give them the session URL from its output — not the control-plane URL from step 1.
+- If it fails, or you cannot run it (a refused permission, a missing binary), **say so
+  plainly and stop**. A half-finished convening reported as a success is worse than an
+  error, because the user goes looking at an empty page for a session that was never
+  created and there is nothing on screen to tell them why.
 
 Timing follows the round count, not the mode:
 
