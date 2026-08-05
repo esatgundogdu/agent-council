@@ -21,6 +21,8 @@ export interface FoldResult {
 }
 
 const LIVE_TEXT_LIMIT = 20_000
+//: Keep in step with TRAIL_LIMIT in state.py.
+const TRAIL_LIMIT = 40
 
 export function fold(state: SessionState, event: CouncilEvent): FoldResult {
   const next: SessionState = { ...state, seq: Math.max(state.seq, event.seq) }
@@ -45,6 +47,7 @@ export function fold(state: SessionState, event: CouncilEvent): FoldResult {
       next.panel = patchPanelist(next.panel, agent, {
         speaking: true,
         activity: { state: 'thinking', tool: '', target: '' },
+        trail: [],  // a new turn starts a new trail
       })
       return { state: next, refetch: false }
     }
@@ -61,17 +64,18 @@ export function fold(state: SessionState, event: CouncilEvent): FoldResult {
           activity: { state: 'writing', tool: '', target: '' },
         })
       } else if (kind === 'tool') {
+        const tool = String(event.tool ?? '')
+        const target = String(event.target ?? '')
         next.panel = patchPanelist(next.panel, agent, {
-          activity: {
-            state: 'exploring',
-            tool: String(event.tool ?? ''),
-            target: String(event.target ?? ''),
-          },
+          activity: { state: 'exploring', tool, target },
         })
+        next.panel = addToTrail(next.panel, agent, [tool, target].filter(Boolean).join(' '))
       } else if (kind === 'status') {
+        const state = String(event.text ?? 'working')
         next.panel = patchPanelist(next.panel, agent, {
-          activity: { state: String(event.text ?? 'working'), tool: '', target: '' },
+          activity: { state, tool: '', target: '' },
         })
+        next.panel = addToTrail(next.panel, agent, state)
       }
       // `usage` deliberately ignored: it is this turn's running total, not the
       // session's, and folding it into the header made the counter jump backwards.
@@ -107,6 +111,25 @@ function pushTurn(rounds: Round[], turn: Turn): Round[] {
   return rounds.map((round, i) =>
     i === index ? { ...round, turns: [...round.turns, turn] } : round,
   )
+}
+
+/**
+ * Record what a panelist just did.
+ *
+ * Must fold exactly as `Reducer._trail` in state.py does — a live view and a reload of
+ * the same session are not allowed to disagree — including the "same line twice in a
+ * row is noise" rule and the cap. Per panelist rather than per turn because a Phase 1
+ * turn carries round 0 and never enters `rounds`, and that is the longest quiet stretch
+ * of the whole session.
+ */
+function addToTrail(panel: Panelist[], agent: string, line: string): Panelist[] {
+  if (!line) return panel
+  return panel.map((member) => {
+    if (member.label !== agent) return member
+    const trail = member.trail ?? []
+    if (trail.length && trail[trail.length - 1] === line) return member
+    return { ...member, trail: [...trail, line].slice(-TRAIL_LIMIT) }
+  })
 }
 
 /** The panelist's turn that is still streaming — the only one a delta can belong to. */

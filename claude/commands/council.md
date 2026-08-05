@@ -58,7 +58,14 @@ between two, ask.
 
 ### 3. Write the task down, verbatim
 
-`.council-task.md`, containing the request text and **nothing else**.
+**In a temporary directory, never in the user's project.** Your scratchpad directory if
+you have one, otherwise the system temp dir (`%TEMP%` on Windows, `/tmp` elsewhere).
+`council start` copies the text into the session's own `task.md` the moment it runs, so
+these files are scratch and nothing later reads them — but a repository that is not this
+one has no `.gitignore` rule for them, and they turn up in the user's next `git status`
+as two files they did not write.
+
+A file holding the request text and **nothing else**.
 
 No summary, no restatement, no list of relevant files, no "context" preamble — those go
 in the brief (step 4), where they are labelled as yours. Several models exploring this
@@ -70,7 +77,7 @@ If the user gave you no request text, ask for it and stop.
 
 ### 4. Write the brief, if this session has anything worth passing
 
-`.council-context.md`, and `--context .council-context.md`.
+Another temp file, passed as `--context`. Same rule as the task: not in their project.
 
 This is yours to write and it is a judgement call. **The tool guarantees the part that
 matters: a panelist writing its independent plan never sees it.** It arrives when the
@@ -97,6 +104,17 @@ as though it were settled.
 
 Skip the brief entirely when there is nothing to say: a fresh `/council` on a new task
 with no prior conversation does not need one, and an empty one is worse than none.
+
+**Show the user what the panel is getting, before it runs.** Not the files — a couple of
+lines saying what is in them:
+
+> Sending: your request verbatim (383 chars), plus a brief covering the existing event
+> bus and service locator, the empty KARAR phase, the naming rules in `docs/KURALLAR.md`,
+> and five open questions. Say if that is wrong and I will stop it.
+
+A brief is you framing the discussion. The user is the one person who can tell you it is
+framing it wrongly, and after a 40-minute run is too late to find out. Two lines up front
+costs nothing; getting it wrong costs the whole session.
 
 ### 5. Pass the proposal, if there is a concrete artefact to judge
 
@@ -133,7 +151,7 @@ and `max` on the same panel is an order of magnitude of tokens and minutes.
 ### 7. Convene
 
 ```
-council start --task .council-task.md --project-dir . [--mode consult] [--context .council-context.md] [--seed plan.md] [--agents "..."] [--max-rounds N] --json
+council start --task <tmp>/task.md --project-dir . [--mode consult] [--context <tmp>/brief.md] [--seed <tmp>/plan.md] [--agents "..."] [--max-rounds N] --json
 ```
 
 **This is the step that convenes the council, and nothing before it has.** Writing the
@@ -146,6 +164,12 @@ exactly no council. So:
   plainly and stop**. A half-finished convening reported as a success is worse than an
   error, because the user goes looking at an empty page for a session that was never
   created and there is nothing on screen to tell them why.
+
+A council writes its artefacts to `<project>/.council/<id>/` — next to the code they are
+about, which is the point, and several megabytes of event log. If that project's
+`.gitignore` has no `.council/` rule, say so once and offer to add it. Do not add it
+without asking: it is their repository, and a line appearing in `.gitignore` that they
+did not write is the same rudeness as the files it hides.
 
 Timing follows the round count, not the mode:
 

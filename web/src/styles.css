@@ -459,6 +459,26 @@ label { display: block; }
 .turn-head .label { font-family: var(--font-display); font-size: 1.05rem; letter-spacing: 0.1em; }
 .turn-head .meta { font-family: var(--font-mono); font-size: 0.64rem; color: var(--paper-faint); letter-spacing: 0.06em; }
 .turn-body { color: var(--paper); }
+
+/* What a running turn is doing. Dimmer than the prose it sits above, because it is
+   context for the answer rather than the answer — except the last line, which is the
+   only thing on screen that says the panelist is still moving. */
+.trail {
+  list-style: none;
+  margin: 0 0 0.6rem;
+  padding: 0;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--paper-dim);
+  max-height: 11rem;
+  overflow-y: auto;
+  border-left: 2px solid var(--rule);
+  padding-left: 0.7rem;
+}
+.trail li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trail li.now { color: var(--paper); }
+.trail li.now::after { content: ' …'; }
 .turn-reason { margin-top: 0.7rem; font-size: 0.88rem; color: var(--paper-dim); border-top: 1px dotted var(--rule); padding-top: 0.5rem; }
 
 .cursor::after {

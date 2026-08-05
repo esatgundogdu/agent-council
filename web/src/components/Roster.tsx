@@ -79,6 +79,21 @@ export function Roster({
                   : member.reason || ' '}
             </div>
 
+            {/* The caption above is one line that the next tool call overwrites, which
+                across a three-minute repository read is a flicker rather than progress.
+                This keeps the same information instead: what it has actually been
+                through since this turn began. Only while it speaks -- a finished
+                panelist's trail is history nobody needs in a roster card. */}
+            {member.speaking && (member.trail?.length ?? 0) > 1 && (
+              <ol className="trail">
+                {member.trail!.slice(-TRAIL_SHOWN).map((line, i, shown) => (
+                  <li key={i} className={i === shown.length - 1 ? 'now' : undefined}>
+                    {trim(line)}
+                  </li>
+                ))}
+              </ol>
+            )}
+
             <div className="foot">
               <span>{member.has_plan ? 'plan ✓' : 'no plan'}</span>
               <span>{fmtTokens(member.tokens)} tok</span>
@@ -118,6 +133,9 @@ export function Roster({
     </div>
   )
 }
+
+//: How much of a panelist's trail fits in a roster card without crowding it out.
+const TRAIL_SHOWN = 6
 
 function trim(target: string): string {
   return target.length > 46 ? `…${target.slice(-45)}` : target

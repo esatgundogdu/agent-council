@@ -75,19 +75,61 @@ def _run(argv: list[str], timeout: int) -> subprocess.CompletedProcess | None:
         return None
 
 
+#: A cold `opencode models` on Windows can take a while; below this it is a hang.
+OPENCODE_LIST_TIMEOUT = 60
+
+
 @lru_cache(maxsize=1)
-def opencode_models(binary: str = "opencode") -> tuple[str, ...]:
-    """Models opencode can currently reach, as 'provider/model' strings."""
+def opencode_listing(binary: str = "opencode") -> tuple[tuple[str, ...], str]:
+    """(models, why it is empty). The second half is the point.
+
+    One empty tuple used to stand for four unrelated things — no binary on PATH, a
+    listing that exited non-zero, one that timed out, and one that genuinely returned
+    nothing — and the catalogue reported all of them as "is opencode installed?". It
+    said that about an opencode that was installed, on PATH, and listing 41 models a
+    minute later; the user went looking for it in WSL, because the tool told them it
+    was not there.
+    """
     # resolve_binary, or Windows never finds the `opencode.cmd` npm installs and
     # every Ollama Cloud model silently disappears from the catalogue.
-    proc = _run([resolve_binary(binary), "models"], timeout=60)
-    if proc is None or proc.returncode != 0:
-        return ()
-    return tuple(
+    path = resolve_binary(binary)
+    found = Path(path).is_file()
+    try:
+        proc = subprocess.run(
+            [path, "models"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=OPENCODE_LIST_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return (), (
+            f"`{binary} models` did not answer within {OPENCODE_LIST_TIMEOUT}s. It is "
+            f"installed ({path}); try running that command yourself."
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
+        if not found:
+            return (), f"not installed, or not on this PATH (looked for '{binary}')."
+        return (), f"found at {path}, but it could not be run: {exc}"
+
+    if proc.returncode != 0:
+        tail = (proc.stderr or proc.stdout or "").strip().splitlines()
+        detail = f": {tail[-1][:120]}" if tail else ""
+        return (), f"`{binary} models` exited {proc.returncode}{detail}"
+
+    models = tuple(
         line.strip()
         for line in proc.stdout.splitlines()
         if "/" in line.strip() and not line.startswith(" ")
     )
+    if not models:
+        return (), f"it is installed but listed no models — try `{binary} auth login`."
+    return models, ""
+
+
+def opencode_models(binary: str = "opencode") -> tuple[str, ...]:
+    """Models opencode can currently reach, as 'provider/model' strings."""
+    return opencode_listing(binary)[0]
 
 
 @lru_cache(maxsize=1)
@@ -474,9 +516,9 @@ def describe_catalog(binaries: dict[str, str] | None = None) -> str:
         f"  {'claude opus 5':<23} a pinned version -> claude-opus-5"
     )
 
-    models = opencode_models(binaries.get("opencode_cli", "opencode"))
+    models, problem = opencode_listing(binaries.get("opencode_cli", "opencode"))
     if not models:
-        lines += ["", "Via opencode", "  (none found — is opencode installed and authenticated?)"]
+        lines += ["", "Via opencode", f"  {problem}"]
     else:
         by_provider: dict[str, list[str]] = {}
         for model in models:

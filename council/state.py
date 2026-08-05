@@ -24,6 +24,10 @@ STALE_AFTER_SECONDS = 900
 #: `turn_end`; this is only the tail a client shows while the turn is still running.
 LIVE_TEXT_LIMIT = 20_000
 
+#: How many "what it just did" lines a running turn keeps. Enough to see movement and
+#: where it is looking, few enough that the turn body stays readable.
+TRAIL_LIMIT = 40
+
 
 def find_sessions(project_dir: str | Path) -> list[Path]:
     """Session directories under `.council/`, newest first."""
@@ -143,6 +147,7 @@ class Reducer:
         self.rounds: dict[int, list[dict]] = {}
         self.open_turns: dict[str, dict] = {}
         self.activity: dict[str, dict] = {}
+        self.trails: dict[str, list[str]] = {}
         self.health: list[dict] = []
         self.controls: list[dict] = []
         self.dropped: dict[str, str] = {}
@@ -237,6 +242,7 @@ class Reducer:
         }
         self.open_turns[agent] = turn
         self.activity[agent] = {"state": "thinking", "tool": "", "target": ""}
+        self.trails[agent] = []  # a new turn starts a new trail
         if turn["round"]:
             self.rounds.setdefault(turn["round"], []).append(turn)
 
@@ -252,17 +258,35 @@ class Reducer:
                 turn["text"] = merged[-LIVE_TEXT_LIMIT:]
             self.activity[agent] = {"state": "writing", "tool": "", "target": ""}
         elif kind == "tool":
-            self.activity[agent] = {
-                "state": "exploring",
-                "tool": str(event.get("tool") or ""),
-                "target": str(event.get("target") or ""),
-            }
+            tool = str(event.get("tool") or "")
+            target = str(event.get("target") or "")
+            self.activity[agent] = {"state": "exploring", "tool": tool, "target": target}
+            self._trail(agent, " ".join(x for x in (tool, target) if x))
         elif kind == "status":
-            self.activity[agent] = {
-                "state": str(event.get("text") or "thinking"),
-                "tool": "",
-                "target": "",
-            }
+            state = str(event.get("text") or "thinking")
+            self.activity[agent] = {"state": state, "tool": "", "target": ""}
+            self._trail(agent, state)
+
+    def _trail(self, agent: str, line: str) -> None:
+        """What this panelist has been doing since its turn began.
+
+        A tool call used to update one caption that the next call overwrote, so a
+        panelist reading a repository for three minutes showed a line that flickered and
+        nothing else. Codex says almost nothing while it explores — measured at roughly
+        one message per four commands, and this version emits no reasoning items at all —
+        so this trail is most of what there is to watch.
+
+        Kept per panelist rather than per turn because Phase 1 turns carry round 0 and
+        never enter `rounds` at all: hanging it off the turn would have missed the one
+        stretch that is longest and quietest.
+        """
+        if not line:
+            return
+        trail = self.trails.setdefault(agent, [])
+        if trail and trail[-1] == line:
+            return  # the same file twice in a row is noise, not progress
+        trail.append(line)
+        del trail[:-TRAIL_LIMIT]
 
     def _on_turn_end(self, event: dict, agent) -> None:
         if not isinstance(agent, str):
@@ -490,6 +514,7 @@ class Reducer:
                     "model": self.models.get(label),
                     "adapter": self.adapters.get(label),
                     "effort": self.efforts.get(label),
+                    "trail": self.trails.get(label, []),
                     "dropped": label in self.dropped,
                     "drop_reason": self.dropped.get(label),
                     "verdict": turn.get("verdict") if turn else None,

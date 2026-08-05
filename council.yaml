@@ -66,9 +66,14 @@ protocol:
   # when a CLI reports none). Dominated by repo exploration, not the transcript: a
   # panelist re-sends every file it reads on each agent-loop step, and providers
   # without caching pay full price each time. A single 3-model run measured ~1.1M.
-  token_budget: 8000000
+  # Raised from 8M: a single glm-5.2 panelist spent 1.7M on its phase-1 plan alone
+  # while exploring the Muharebe_Simulasyon repo, so a 3-model run there does not fit
+  # in 8M. Lower it again for smaller repositories.
+  token_budget: 20000000
 
-  wall_clock_budget: 1800
+  # Raised from 1800: phase 1 alone can now run to per_call_phase1 (2400s), so a 30
+  # minute budget would end the session before the discussion ever started.
+  wall_clock_budget: 9000
 
   # Summarise older rounds once the transcript passes this many tokens. Keep it
   # below the smallest panelist's context window: the prompt is this plus the task,
@@ -88,8 +93,11 @@ protocol:
   compaction_panelist: claude
 
 timeouts:
-  per_call: 300          # a discussion turn
-  per_call_phase1: 900   # the independent plan, including repo exploration
+  # Both raised after a run on a large C++ repository dropped two of three panelists:
+  # they were still reading source when the 900s phase-1 clock expired, and the
+  # session failed for want of a quorum.
+  per_call: 600           # a discussion turn
+  per_call_phase1: 2400   # the independent plan, including repo exploration
 
 # skip_with_note: an unresponsive panelist sits the round out; the session fails only
 # if fewer than 2 panelists remain. 'abort' stops at the first failure instead.

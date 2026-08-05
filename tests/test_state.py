@@ -446,3 +446,81 @@ def test_a_seqless_record_neither_jumps_the_queue_nor_collides(tmp_path):
     assert seqs == sorted(seqs), "events must stay in order"
     assert len(set(seqs)) == len(seqs), "a duplicate seq loses an event on resume"
     assert [e["event"] for e in events] == ["round_start", "turn_end", "round_start"]
+
+
+# ---- what a running turn is doing --------------------------------------
+#
+# A tool call used to update one roster caption that the next call overwrote, so a
+# panelist reading a repository for three minutes showed an empty turn body and a line
+# that flickered. Measured against a real run: codex emits about one message per four
+# commands and no reasoning items at all, so this trail is most of what there is to see
+# while a turn is in flight. `addToTrail` in web/src/reduce.ts must fold identically.
+
+
+def deltas(agent, *pairs):
+    out = [{"event": "turn_start", "agent": agent, "round": 1, "phase": 2}]
+    for kind, value in pairs:
+        if kind == "tool":
+            out.append({"event": "turn_delta", "agent": agent, "kind": "tool",
+                        "tool": "read", "target": value})
+        else:
+            out.append({"event": "turn_delta", "agent": agent, "kind": kind, "text": value})
+    return out
+
+
+def panelist(tmp_path, events, label="Agent-A"):
+    state = build_state(write_session(tmp_path, events))
+    return next(p for p in state["panel"] if p["label"] == label)
+
+
+def test_a_running_turn_records_what_it_touched(tmp_path):
+    member = panelist(tmp_path, deltas("Agent-A", ("tool", "a.py"), ("tool", "b.py")))
+    assert member["trail"] == ["read a.py", "read b.py"]
+    assert member["speaking"] is True
+
+
+def test_the_same_line_twice_running_is_not_progress(tmp_path):
+    member = panelist(
+        tmp_path, deltas("Agent-A", ("tool", "a.py"), ("tool", "a.py"), ("tool", "b.py"))
+    )
+    assert member["trail"] == ["read a.py", "read b.py"]
+
+
+def test_status_lines_join_the_trail(tmp_path):
+    member = panelist(tmp_path, deltas("Agent-A", ("status", "reasoning"), ("tool", "a.py")))
+    assert member["trail"] == ["reasoning", "read a.py"]
+
+
+def test_the_trail_is_capped(tmp_path):
+    from council.state import TRAIL_LIMIT
+
+    many = [("tool", f"f{i}.py") for i in range(TRAIL_LIMIT + 15)]
+    member = panelist(tmp_path, deltas("Agent-A", *many))
+    assert len(member["trail"]) == TRAIL_LIMIT
+    assert member["trail"][-1] == f"read f{TRAIL_LIMIT + 14}.py"
+
+
+def test_text_deltas_do_not_pollute_the_trail(tmp_path):
+    member = panelist(tmp_path, deltas("Agent-A", ("text", "hello "), ("tool", "a.py")))
+    assert member["trail"] == ["read a.py"]
+
+
+def test_the_trail_works_during_phase_1_where_there_is_no_round(tmp_path):
+    """The reason it lives on the panelist and not on the turn.
+
+    A Phase 1 turn carries round 0 and never enters `rounds` at all, so a trail hung off
+    the turn would be invisible for exactly the longest, quietest stretch of a session —
+    four panelists reading a repository for minutes with nothing on screen.
+    """
+    events = [
+        START,
+        {"event": "turn_start", "agent": "Agent-A", "round": 0, "phase": 1},
+        {"event": "turn_delta", "agent": "Agent-A", "kind": "tool",
+         "tool": "read", "target": "src/main.cpp"},
+        {"event": "turn_delta", "agent": "Agent-A", "kind": "tool",
+         "tool": "grep", "target": "Olay_Yolu_c"},
+    ]
+    state = build_state(write_session(tmp_path, events))
+    assert state["rounds"] == []  # nothing to hang a trail on
+    member = next(p for p in state["panel"] if p["label"] == "Agent-A")
+    assert member["trail"] == ["read src/main.cpp", "grep Olay_Yolu_c"]

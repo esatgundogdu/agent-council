@@ -6,7 +6,8 @@ build/
 dist/
 .pytest_cache/
 .council/
-# the scratch files /council and /consult write in the project root
+# /council used to write its scratch files here; it writes them to a temp dir now, and
+# this stays only so an older copy of the command cannot dirty the tree.
 .council-*.md
 .DS_Store
 .claude/settings.local.json

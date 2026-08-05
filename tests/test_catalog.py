@@ -230,3 +230,70 @@ def test_harness_status_without_overrides_still_asks_path():
 
     rows = {h["adapter"]: h for h in harness_status()}
     assert rows["codex_cli"]["binary"] == "codex"
+
+
+# ---- why the opencode catalogue is empty -------------------------------
+#
+# One empty list used to mean four different things, and the catalogue reported all of
+# them as "is opencode installed?". It said that about an opencode that was on PATH and
+# listing 41 models a minute later, which sent the user hunting for it in WSL.
+
+
+def listing(monkeypatch, *, found=True, run=None):
+    """Call `opencode_listing` against a stubbed binary and subprocess."""
+    from council import catalog
+
+    catalog.opencode_listing.cache_clear()
+    monkeypatch.setattr(catalog, "resolve_binary", lambda b: r"C:\bin\opencode.cmd")
+    monkeypatch.setattr(catalog.Path, "is_file", lambda self: found)
+    monkeypatch.setattr(catalog.subprocess, "run", run)
+    try:
+        return catalog.opencode_listing()
+    finally:
+        catalog.opencode_listing.cache_clear()
+
+
+def _proc(returncode=0, stdout="", stderr=""):
+    import subprocess
+
+    return subprocess.CompletedProcess([], returncode, stdout, stderr)
+
+
+def test_a_timeout_is_not_reported_as_missing(monkeypatch):
+    import subprocess
+
+    def timeout(*a, **k):
+        raise subprocess.TimeoutExpired("opencode", 60)
+
+    models, problem = listing(monkeypatch, run=timeout)
+    assert models == ()
+    assert "did not answer" in problem and "installed" in problem
+    assert "not installed" not in problem
+
+
+def test_a_missing_binary_says_so(monkeypatch):
+    def missing(*a, **k):
+        raise FileNotFoundError("nope")
+
+    _, problem = listing(monkeypatch, found=False, run=missing)
+    assert "not installed" in problem
+
+
+def test_a_failing_command_quotes_what_it_said(monkeypatch):
+    _, problem = listing(
+        monkeypatch, run=lambda *a, **k: _proc(1, stderr="not authenticated")
+    )
+    assert "exited 1" in problem and "not authenticated" in problem
+
+
+def test_an_empty_list_points_at_auth(monkeypatch):
+    _, problem = listing(monkeypatch, run=lambda *a, **k: _proc(0, stdout="\n"))
+    assert "auth login" in problem
+
+
+def test_a_working_opencode_has_no_problem_to_report(monkeypatch):
+    models, problem = listing(
+        monkeypatch, run=lambda *a, **k: _proc(0, stdout="ollama-cloud/kimi-k2.6\n")
+    )
+    assert models == ("ollama-cloud/kimi-k2.6",)
+    assert problem == ""

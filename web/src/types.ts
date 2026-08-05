@@ -22,6 +22,11 @@ export interface Panelist {
   plan: { chars?: number; seconds?: number; tokens?: number; session?: string } | null
   speaking: boolean
   activity: Activity | null
+  /**
+   * What it has done since its current turn began — tool calls and status lines,
+   * oldest first. Reset by `turn_start`, capped at TRAIL_LIMIT.
+   */
+  trail?: string[]
 }
 
 export interface Turn {
