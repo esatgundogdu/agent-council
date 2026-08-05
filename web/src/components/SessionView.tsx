@@ -3,20 +3,18 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { clock, duration, tokens as fmtTokens } from '../format'
 import { useSession } from '../useSession'
-import { AgentThread } from './AgentThread'
 import { Debate } from './Debate'
+import { Inspector } from './Inspector'
 import { Markdown } from './Markdown'
-import { Plans } from './Plans'
-import { Roster } from './Roster'
+import { Table } from './Table'
 import type { SessionState } from '../types'
 
-type Tab = 'debate' | 'panelists' | 'digest' | 'setup'
+type Tab = 'session' | 'digest' | 'setup'
 
 const TAB_LABEL: Record<Tab, string> = {
-  debate: 'debate',
-  panelists: 'panelists',
+  session: 'the session',
   digest: 'digest',
-  setup: 'setup',
+  setup: 'what it was given',
 }
 
 /** Past this long without a heartbeat, a session claiming to run is probably wedged. */
@@ -32,7 +30,7 @@ const HEALTH_TONE: Record<string, string> = {
 
 export function SessionView({ id, onGone }: { id: string; onGone: () => void }) {
   const { state, error, reload } = useSession(id)
-  const [tab, setTab] = useState<Tab>('debate')
+  const [tab, setTab] = useState<Tab>('session')
   const [inspecting, setInspecting] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [acted, setActed] = useState<string | null>(null)
@@ -95,10 +93,10 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
     }
   }
 
-  function inspect(label: string) {
-    setInspecting(label)
-    setTab('panelists')
-  }
+  // Where in the council we are — mode, phase, round — now lives in the middle of the
+  // table, which is where it is actually being read. What is left here is what the
+  // table cannot say: whether this session is alive, and what it has spent.
+  const inspected = state.panel.find((p) => p.label === inspecting) ?? null
 
   return (
     <>
@@ -109,23 +107,6 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
         </span>
 
         <div className="gauges">
-          <Gauge label="mode" value={session.mode} />
-          {/* A consultation has no phase 1, so numbering its first round "2 · debate"
-              names an implementation detail rather than what is happening. */}
-          <Gauge
-            label="phase"
-            value={
-              session.mode === 'consult' && status.phase === 2
-                ? '· discussion'
-                : (PHASE[status.phase ?? 0] ?? '—')
-            }
-          />
-          <Gauge
-            label="round"
-            // Zero during phase 1, where no round has started and "0 / 5" reads as a
-            // count rather than as "not yet".
-            value={`${status.round || '—'} / ${max(session.protocol.max_rounds)}`}
-          />
           <Gauge
             label="tokens"
             value={fmtTokens(status.tokens)}
@@ -177,7 +158,7 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
         {/* The digest is the reason the council was convened, and on a long run the
             user is not watching when it lands. A dot on a tab is not enough of an
             ending. */}
-        {tab === 'debate' && !running && state.has_digest && (
+        {tab === 'session' && !running && state.has_digest && (
           <button className="finished" onClick={() => setTab('digest')}>
             <b>{noCrossReview(state) ? 'Everyone has answered.' : 'The council has finished.'}</b>
             <span>
@@ -188,47 +169,32 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
           </button>
         )}
 
-        {tab === 'debate' && (
+        {tab === 'session' && (
           <>
-            <Roster
-              panel={state.panel}
-              running={running}
-              onDrop={(label) => control('drop', { agent: label })}
-              onSkip={(label) => control('skip', { agent: label })}
-              onRestore={(label) => control('restore', { agent: label })}
-              onInspect={inspect}
-            />
+            <Table state={state} onInspect={setInspecting} onChair={() => setTab('setup')} />
             <Notices state={state} />
-            <Plans
-              sessionId={id}
-              panel={state.panel}
-              mode={session.mode}
-              running={running}
-              defaultOpen={state.rounds.length === 0}
-            />
             <Debate rounds={state.rounds} phase={status.phase} mode={session.mode} />
             {running && <Chair onSend={(text) => control('chair', { text })} />}
           </>
-        )}
-
-        {tab === 'panelists' && (
-          <AgentThread
-            sessionId={id}
-            panel={state.panel}
-            label={inspecting}
-            onLabel={setInspecting}
-          />
         )}
 
         {tab === 'digest' && <Digest state={state} />}
 
         {tab === 'setup' && <Setup state={state} />}
       </div>
+
+      {inspected && (
+        <Inspector
+          sessionId={id}
+          member={inspected}
+          running={running}
+          onClose={() => setInspecting(null)}
+          onControl={control}
+        />
+      )}
     </>
   )
 }
-
-const PHASE: Record<number, string> = { 1: '1 · planning', 2: '2 · debate', 3: '3 · digest' }
 
 /**
  * How a finished session is summed up in one line, before anyone opens the digest.
@@ -498,6 +464,12 @@ function Setup({ state }: { state: SessionState }) {
       <dl className="kv">
         <dt>started</dt>
         <dd>{clock(session.started_at) || '—'}</dd>
+        <dt>convened by</dt>
+        <dd>
+          {session.convened_by === 'agent'
+            ? 'the main agent, from an editor session'
+            : 'you, from a terminal or this browser'}
+        </dd>
         <dt>mode</dt>
         <dd>{session.mode}</dd>
         <dt>project</dt>

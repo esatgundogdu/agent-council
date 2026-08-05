@@ -278,6 +278,84 @@ def test_each_panelists_own_thread_is_readable(client, project):
     sent = next(e for e in thread["entries"] if e["role"] == "sent")
     assert "senior engineer" in sent["text"], "the exact prompt we sent is recorded"
 
+    # What it said between tool calls. These deltas were being read out of the log for
+    # the roster's activity line and dropped here, so this screen showed a panelist
+    # opening eleven files and never a word about why.
+    assert "narration" in roles
+    # In `seq` order, so narration sits where it happened rather than in a block.
+    assert [e["seq"] for e in thread["entries"]] == sorted(
+        e["seq"] for e in thread["entries"]
+    )
+
+
+def test_the_thread_and_the_roster_agree_about_tokens(client, project):
+    """They disagreed by exactly 2× on a real session.
+
+    Every agent-scoped event with an int `tokens` was being summed here, and
+    `turn_delta kind="usage"` carries the turn's *running* total, re-emitted as it
+    grows. Two screens, one number, and the difference varied with how many usage
+    events the harness happened to emit.
+    """
+    created = start(client, project)
+    wait_for(client, created["id"])
+    state = client.get(f"/api/sessions/{created['id']}").json()
+    for member in state["panel"]:
+        thread = client.get(
+            f"/api/sessions/{created['id']}/agents/{member['label']}"
+        ).json()
+        assert thread["tokens"] == member["tokens"]
+
+
+def test_a_panelists_console_logs_are_listed_and_readable(client, project):
+    created = start(client, project)
+    wait_for(client, created["id"])
+    state = client.get(f"/api/sessions/{created['id']}").json()
+
+    member = state["panel"][0]
+    assert member["calls"], "every harness call leaves its raw output behind"
+    for call in member["calls"]:
+        body = client.get(f"/api/sessions/{created['id']}/calls/{call['file']}")
+        assert body.status_code == 200
+        assert "# council call log" in body.text
+        assert f"# agent    : {member['label']}" in body.text
+
+
+def test_the_console_log_route_opens_only_names_it_could_have_minted(client, project):
+    created = start(client, project)
+    wait_for(client, created["id"])
+    back = chr(92)
+    for attack in (
+        "..%2F..%2Fstatus.json",
+        f"..{back}..{back}task.md",
+        "digest.md",
+        "0001-agent-a-r0.log.txt",
+    ):
+        response = client.get(f"/api/sessions/{created['id']}/calls/{attack}")
+        assert response.status_code in (400, 404), attack
+        assert "council call log" not in response.text
+
+
+def test_capture_can_be_switched_off_per_session(client, project):
+    created = start(client, project, capture_console=False)
+    wait_for(client, created["id"])
+    state = client.get(f"/api/sessions/{created['id']}").json()
+    assert all(not p["calls"] for p in state["panel"])
+    assert not (Path(state["session"]["dir"]) / "calls").exists()
+
+
+def test_the_session_records_who_convened_it(client, project):
+    """Not a permission — the CLI, the browser and the main agent all reach this same
+    endpoint and none of them is privileged. It names the seat at the head of the
+    table, and the browser leaves it alone."""
+    assert (
+        client.get(f"/api/sessions/{start(client, project)['id']}")
+        .json()["session"]["convened_by"]
+        == "user"
+    )
+    by_agent = start(client, project, convened_by="agent")
+    state = client.get(f"/api/sessions/{by_agent['id']}").json()
+    assert state["session"]["convened_by"] == "agent"
+
 
 def test_the_session_list_spans_projects(client, project, tmp_path):
     other = tmp_path / "other"
@@ -309,6 +387,10 @@ def test_deleting_a_session_removes_it_from_the_list_and_from_disk(client, proje
     wait_for(client, created["id"])
     directory = Path(client.get(f"/api/sessions/{created['id']}").json()["session"]["dir"])
     assert directory.is_dir()
+
+    # Console logs live inside the session directory precisely so that deleting the
+    # session takes them with it, and nothing has to remember to clean up.
+    assert (directory / "calls").is_dir()
 
     assert client.delete(f"/api/sessions/{created['id']}").status_code == 200
     assert not directory.exists()

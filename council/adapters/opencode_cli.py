@@ -56,6 +56,7 @@ class OpencodeAdapter(Adapter):
         timeout: int,
         session: str | None = None,
         on_delta=None,
+        call_log=None,
     ) -> Reply:
         base = [self.binary, "run", "--agent", self.agent, "--format", "json"]
         if self.model:
@@ -78,6 +79,7 @@ class OpencodeAdapter(Adapter):
                 timeout=timeout,
                 env=env,
                 on_line=self._line_sink(on_delta),
+                call_log=call_log,
             )
         if not reply.ok:
             return reply

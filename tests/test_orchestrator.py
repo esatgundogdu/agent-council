@@ -7,6 +7,7 @@ import os
 import pytest
 
 from council.adapters.base import Adapter, Delta, Reply
+from council.calls import DISCARD
 from council.config import parse_config
 from council.orchestrator import Council, CouncilError, SessionPaths
 from council.panel import build_panel
@@ -32,16 +33,23 @@ class ScriptedAdapter(Adapter):
         self.sessions_seen = []
         self.session_name = session_name
 
-    async def ask(self, prompt, cwd, timeout, session=None, on_delta=None):
+    async def ask(self, prompt, cwd, timeout, session=None, on_delta=None, call_log=None):
         self.prompts.append(prompt)
         self.sessions_seen.append(session)
         i = self.calls
         self.calls += 1
         item = self.script[min(i, len(self.script) - 1)] if self.script else READY_MSG
+        # Written like a real adapter would, so the console-log path is exercised by
+        # every test in this file rather than only by the ones that look for it.
+        log = call_log or DISCARD
+        log.start(["scripted", "--panelist", str(self.model or "?")], cwd)
         if isinstance(item, Reply):
+            log.finish(item.exit_code, 0.0, item.error)
             return item
         if on_delta is not None:
             on_delta(Delta(kind="text", text=item))
+        log.write("out", item)
+        log.finish(0, 0.0)
         return Reply(ok=True, text=item, session_id=self.session_name)
 
 
@@ -400,8 +408,8 @@ def test_real_token_counts_are_preferred_over_the_estimate(tmp_path):
     real = adapters["Agent-A"]
     orig = real.ask
 
-    async def ask(prompt, cwd, timeout, session=None, on_delta=None):
-        reply = await orig(prompt, cwd, timeout, session)
+    async def ask(prompt, cwd, timeout, session=None, on_delta=None, call_log=None):
+        reply = await orig(prompt, cwd, timeout, session, call_log=call_log)
         reply.tokens = 9999
         return reply
 
@@ -571,13 +579,13 @@ def test_a_lost_session_falls_back_to_full_reassembly(tmp_path):
     first_turn = {"done": False}
     orig = a.ask
 
-    async def ask(prompt, cwd, timeout, session=None, on_delta=None):
+    async def ask(prompt, cwd, timeout, session=None, on_delta=None, call_log=None):
         # Reject the resumed call once, as an expired session would.
         if session and not first_turn["done"]:
             first_turn["done"] = True
             a.prompts.append(prompt)
             return Reply(ok=False, error="session not found")
-        return await orig(prompt, cwd, timeout, session)
+        return await orig(prompt, cwd, timeout, session, call_log=call_log)
 
     a.ask = ask
     result = run(council)
@@ -654,13 +662,13 @@ def test_after_a_fallback_the_new_session_is_adopted(tmp_path):
     a = adapters["Agent-A"]
     orig, rejected = a.ask, {"done": False}
 
-    async def ask(prompt, cwd, timeout, session=None, on_delta=None):
+    async def ask(prompt, cwd, timeout, session=None, on_delta=None, call_log=None):
         if session and not rejected["done"]:  # kill the first resumed call only
             rejected["done"] = True
             a.prompts.append(prompt)
             a.sessions_seen.append(session)
             return Reply(ok=False, error="session not found")
-        return await orig(prompt, cwd, timeout, session)
+        return await orig(prompt, cwd, timeout, session, call_log=call_log)
 
     a.ask = ask
     run(council)

@@ -151,8 +151,13 @@ and `max` on the same panel is an order of magnitude of tokens and minutes.
 ### 7. Convene
 
 ```
-council start --task <tmp>/task.md --project-dir . [--mode consult] [--context <tmp>/brief.md] [--seed <tmp>/plan.md] [--agents "..."] [--max-rounds N] --json
+council start --task <tmp>/task.md --project-dir . --by agent [--mode consult] [--context <tmp>/brief.md] [--seed <tmp>/plan.md] [--agents "..."] [--max-rounds N] --json
 ```
+
+`--by agent` is not a permission — you reach the same endpoint the browser does, and
+neither of you is privileged. It puts *you* in the seat at the head of the table in the
+control plane instead of the user, which is true and which the user cannot tell from
+anything else on the screen. Leave it off and the session claims they set the task.
 
 **This is the step that convenes the council, and nothing before it has.** Writing the
 task file, writing the brief and opening the control plane all leave the user with
@@ -215,6 +220,14 @@ If the run fails, `council status <id>` says why. Exit code 2 means too few pane
 survived (usually a CLI auth problem); exit code 3 means a configuration error. Every
 argument is in `events.jsonl` in full, so even a run that died before Phase 3 has its
 discussion on disk.
+
+When a panelist times out or exits non-zero there is no envelope, no text and no
+verdict — nothing parsed survives, because there was nothing to parse. What that
+process actually printed is in `<project>/.council/<id>/calls/`, one file per harness
+call, with the full command line at the top and the exit code at the bottom. That is
+the file to read, and the one to quote at the user, when a panelist behaves in a way
+the events cannot explain. In the browser it is the **console** tab of a panelist's
+seat.
 
 ### 9. Read the digest — only the digest
 

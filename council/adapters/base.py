@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from collections import deque
 from typing import Callable
 
+from ..calls import DISCARD, CallLog
+
 # A harness that floods stdout is a bug, not a reason to exhaust memory.
 MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 
@@ -122,6 +124,7 @@ class Adapter:
         timeout: int,
         session: str | None = None,
         on_delta: DeltaSink | None = None,
+        call_log: CallLog | None = None,
     ) -> Reply:
         """Send a prompt. With `session`, continue that conversation instead of a new one."""
         raise NotImplementedError
@@ -225,6 +228,7 @@ async def run_process(
     stdin_data: str | None = None,
     env: dict | None = None,
     on_line: Callable[[str], None] | None = None,
+    call_log: CallLog | None = None,
 ) -> Reply:
     """Run a harness process to completion, killing it and its children on timeout.
 
@@ -232,12 +236,20 @@ async def run_process(
     each complete line is handed over immediately. Draining never stops, even once
     the output cap is hit, because a child whose pipe fills up blocks forever.
 
+    `call_log` is teed both streams verbatim, before anything parses them. It is the
+    only copy that survives — every adapter overwrites `Reply.text` with the answer it
+    extracted, and `Reply.stderr` is read by nobody.
+
     stdin is always either fed `stdin_data` and closed, or connected to /dev/null:
     a harness left with an open inherited stdin can block waiting for input.
     """
     started = time.monotonic()
     full_env = {**os.environ, **(env or {})}
     argv = [resolve_binary(argv[0]), *argv[1:]]
+    log = call_log or DISCARD
+    # After `resolve_binary`, so the header names the executable actually started —
+    # on Windows that is the `.cmd` shim's real path, which is half the diagnosis.
+    log.start(argv, cwd)
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -254,12 +266,14 @@ async def run_process(
             start_new_session=True,
         )
     except OSError as exc:
-        raise _start_error(argv, exc) from exc
+        error = _start_error(argv, exc)
+        log.finish(None, time.monotonic() - started, str(error))
+        raise error from exc
 
     async def work() -> tuple[str, str]:
         feed = asyncio.create_task(_feed_stdin(proc, stdin_data))
-        out = asyncio.create_task(_pump(proc.stdout, on_line))
-        err = asyncio.create_task(_pump(proc.stderr, None))
+        out = asyncio.create_task(_pump(proc.stdout, on_line, log, "out"))
+        err = asyncio.create_task(_pump(proc.stderr, None, log, "err"))
         try:
             stdout, stderr = await asyncio.gather(out, err)
         finally:
@@ -273,6 +287,10 @@ async def run_process(
         out, err = await asyncio.wait_for(work(), timeout=timeout)
     except asyncio.TimeoutError:
         await _kill(proc)
+        # The one case where this log is the *only* record of the call: a timed-out
+        # turn has no `turn_end`, no envelope and no text — just the note that it ran
+        # out of time. What it was doing for those fifteen minutes is in here.
+        log.finish(None, time.monotonic() - started, f"timed out after {timeout}s")
         return Reply(
             ok=False,
             error=f"timed out after {timeout}s",
@@ -284,11 +302,13 @@ async def run_process(
         # path killed the tree, so a harness could be left running and spending after
         # the call that owned it had gone.
         await _kill(proc)
+        log.finish(None, time.monotonic() - started, "cancelled")
         raise
 
     duration = time.monotonic() - started
     if proc.returncode != 0:
         detail = (err or out).strip()
+        log.finish(proc.returncode, duration, detail[-2000:])
         return Reply(
             ok=False,
             # Kept even on failure: a harness that reports its own errors in its own
@@ -301,6 +321,7 @@ async def run_process(
             duration=duration,
             stderr=err,
         )
+    log.finish(0, duration)
     return Reply(ok=True, text=out, exit_code=0, duration=duration, stderr=err)
 
 
@@ -330,14 +351,24 @@ async def _feed_stdin(proc, stdin_data: str | None) -> None:
             proc.stdin.close()
 
 
-async def _pump(stream, on_line: Callable[[str], None] | None) -> str:
+async def _pump(
+    stream,
+    on_line: Callable[[str], None] | None,
+    call_log: CallLog | None = None,
+    which: str = "out",
+) -> str:
     """Read a pipe to EOF, handing complete lines to `on_line` as they arrive.
 
     Chunk-read rather than `readline()`: asyncio's StreamReader raises once a line
     exceeds its 64 KiB limit, and harness JSONL lines regularly do.
+
+    The tee into `call_log` sits in `take`, not beside `on_line`: `on_line` skips blank
+    lines and only ever sees stdout, and a console log that silently drops blank lines
+    is not the thing that was printed.
     """
     if stream is None:
         return ""
+    log = call_log or DISCARD
     # A bounded window over the *end* of the output. Every harness puts the event that
     # carries the answer, the token count and the session id last — `result`,
     # `turn.completed`, `step-finish` — so keeping the head of a flood discarded
@@ -348,7 +379,9 @@ async def _pump(stream, on_line: Callable[[str], None] | None) -> str:
 
     def take(raw: bytes) -> None:
         nonlocal collected_bytes
-        collected.append(_decode(raw))
+        text = _decode(raw)
+        log.write(which, text)
+        collected.append(text)
         collected_bytes += len(raw)
         while collected_bytes > MAX_OUTPUT_BYTES and len(collected) > 1:
             collected_bytes -= len(collected.popleft().encode("utf-8", "replace"))

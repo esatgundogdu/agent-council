@@ -1,5 +1,8 @@
 export type Mode = 'consult' | 'independent' | 'review' | 'hybrid'
 
+/** Paper or lamplight. Stamped on the root element; every colour follows from it. */
+export type Theme = 'light' | 'dark'
+
 export interface Activity {
   state: string
   tool: string
@@ -27,6 +30,23 @@ export interface Panelist {
    * oldest first. Reset by `turn_start`, capped at TRAIL_LIMIT.
    */
   trail?: string[]
+  /** One per harness process this panelist's turns have started, oldest first. */
+  calls?: CallRecord[]
+}
+
+/**
+ * A console log on disk. The only record of a call that is not a parse of something,
+ * and the only one a timed-out turn leaves behind at all.
+ */
+export interface CallRecord {
+  file: string
+  round: number
+  phase: number | null
+  seconds: number | null
+  exit_code: number | null
+  bytes: number | null
+  truncated: boolean
+  ok: boolean
 }
 
 export interface Turn {
@@ -74,6 +94,8 @@ export interface SessionState {
     dir: string
     project_dir: string
     mode: Mode
+    /** Who set the task: the main agent in an editor, or a person here. */
+    convened_by: 'agent' | 'user'
     protocol: Record<string, unknown>
     timeouts: Record<string, unknown>
     started_at: string | null
@@ -200,7 +222,7 @@ export interface CouncilEvent {
 }
 
 export interface AgentEntry {
-  role: 'sent' | 'reply' | 'tool' | 'problem'
+  role: 'sent' | 'reply' | 'tool' | 'problem' | 'narration'
   seq: number
   ts: string
   round?: number

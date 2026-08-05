@@ -3,38 +3,25 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { tokens as fmtTokens } from '../format'
 import { Markdown } from './Markdown'
-import type { AgentEntry, AgentThread as Thread, Panelist } from '../types'
+import type { AgentEntry, AgentThread as Thread } from '../types'
 
 /**
  * One panelist's own conversation: the exact prompts we sent it, the files it opened,
- * what it replied, and anything that went wrong. This is what "see each model's chat
- * history" means, and it is the first place to look when a panelist behaves oddly.
+ * what it said on the way to an answer, what it replied, and anything that went wrong.
+ * The first place to look when a panelist behaves oddly.
  *
- * Which panelist is shown is owned by the session view, so clicking a face on the
- * roster lands here on that panelist — one piece of state, rather than two that have
- * to be kept in step through a window event.
+ * Which panelist is shown is the inspector's business, not this component's — it is
+ * whichever seat was clicked.
  */
-export function AgentThread({
-  sessionId,
-  panel,
-  label,
-  onLabel,
-}: {
-  sessionId: string
-  panel: Panelist[]
-  label: string | null
-  onLabel: (label: string) => void
-}) {
-  const current = label && panel.some((m) => m.label === label) ? label : panel[0]?.label
+export function AgentThread({ sessionId, label }: { sessionId: string; label: string }) {
   const [thread, setThread] = useState<Thread | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!current) return
     let cancelled = false
     setThread(null)
     api
-      .agent(sessionId, current)
+      .agent(sessionId, label)
       .then((data) => {
         if (cancelled) return
         setThread(data)
@@ -44,52 +31,37 @@ export function AgentThread({
     return () => {
       cancelled = true
     }
-  }, [sessionId, current])
+  }, [sessionId, label])
 
-  if (!panel.length) return <div className="note">The panel has not been announced yet.</div>
+  if (error) return <div className="error-banner">{error}</div>
+  if (!thread) return <div className="loading">loading…</div>
 
   return (
     <>
-      <div className="thread-picker">
-        {panel.map((member) => (
-          <button
-            key={member.label}
-            className={member.label === current ? 'primary' : ''}
-            onClick={() => onLabel(member.label)}
-          >
-            {member.label}
-            {member.name ? ` · ${member.name}` : ''}
-          </button>
-        ))}
+      <div className="dim" style={{ marginBottom: '1.2rem', fontSize: '0.88rem' }}>
+        {thread.name ? `${thread.name}` : 'identity withheld'}
+        {thread.model ? ` · ${thread.model}` : ''} · {fmtTokens(thread.tokens)} tokens ·{' '}
+        {thread.entries.length} entries
       </div>
-
-      {error && <div className="error-banner">{error}</div>}
-      {!thread && !error && <div className="loading">loading…</div>}
-
-      {thread && (
-        <>
-          <div className="dim" style={{ marginBottom: '1.2rem', fontSize: '0.88rem' }}>
-            {thread.name ? `${thread.name}` : 'identity withheld'}
-            {thread.model ? ` · ${thread.model}` : ''} · {fmtTokens(thread.tokens)} tokens ·{' '}
-            {thread.entries.length} entries
-          </div>
-          {thread.entries.length === 0 && (
-            <div className="note">This panelist has not been asked anything yet.</div>
-          )}
-          {group(thread.entries).map((entry, i) =>
-            Array.isArray(entry) ? (
-              <div key={`tools-${i}`} style={{ marginBottom: '1rem' }}>
-                {entry.map((tool, n) => (
-                  <div className="tool-line" key={n}>
-                    <b>{tool.tool}</b> {tool.target}
-                  </div>
-                ))}
+      {thread.entries.length === 0 && (
+        <div className="note">This panelist has not been asked anything yet.</div>
+      )}
+      {group(thread.entries).map((entry, i) =>
+        Array.isArray(entry) ? (
+          <div key={`tools-${i}`} style={{ marginBottom: '1rem' }}>
+            {entry.map((tool, n) => (
+              <div className="tool-line" key={n}>
+                <b>{tool.tool}</b> {tool.target}
               </div>
-            ) : (
-              <Entry key={entry.seq} entry={entry} />
-            ),
-          )}
-        </>
+            ))}
+          </div>
+        ) : entry.role === 'narration' ? (
+          <div className="narration" key={entry.seq}>
+            {entry.text}
+          </div>
+        ) : (
+          <Entry key={entry.seq} entry={entry} />
+        ),
       )}
     </>
   )

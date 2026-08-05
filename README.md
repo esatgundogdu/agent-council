@@ -193,17 +193,27 @@ name, and the API will not take an arbitrary path from anyone else.
 
 The window opens on every council on the machine, newest first, each with the time it
 ran — and a delete, because councils are cheap to start and their tasks rhyme. Opening
-one gives you four tabs:
+one gives you three tabs:
 
-- **debate** — who is writing right now and what they are typing, the independent plans
-  as they land in phase 1, and every round since. Plus the controls: pause, stop, drop
-  or skip a panelist, raise the round limit, wrap up early, and say something to the
-  panel mid-argument.
-- **panelists** — one panelist's own conversation: the exact prompts it was sent, the
-  files it opened, what it replied. Clicking any face on the roster lands here.
+- **the session** — the panel around a table, whoever convened it at the head. Who is
+  speaking is the seat with a ring turning around it; who has already spoken this round
+  is the arc of the rim in front of them, filling as the round closes. The middle says
+  in one sentence what is happening. Under it, the discussion itself, and the controls:
+  pause, stop, raise the round limit, wrap up early, and say something to the panel
+  mid-argument.
 - **digest** — the synthesis, and the `/council-apply` line that hands it to Claude Code.
-- **setup** — the task verbatim, and every setting this council is running under,
-  including any you raised while it ran.
+- **what it was given** — the task verbatim, the brief and the proposal if there were
+  any, and every setting this council is running under, including ones raised mid-run.
+
+Clicking a seat opens that panelist and nothing else: the exact prompts it was sent,
+the files it opened, what it said between them, what it replied — plus **console**, the
+raw output of each of its harness processes, and its independent plan where it wrote
+one. Skip and drop live there too, next to the panelist they apply to.
+
+The head of the table is whoever set the task: the main agent when `/council` convened
+it, you when you did. It opens the task and the brief.
+
+Paper by default, lamplight behind the ☀/☾ in the corner; the choice sticks.
 
 ## The CLI
 
@@ -333,8 +343,21 @@ Your own opencode config is merged, not replaced, and never modified.
 ├── digest.md        final positions + unresolved points  ← the one to read
 ├── events.jsonl     the session's semantic log
 ├── stream.jsonl     live deltas: prompts, streamed text, tool calls
+├── calls/*.log      what each harness process printed, unparsed
 └── status.json      a derived snapshot, for anything that only wants to poll
 ```
+
+Everything above `calls/` has been through a parser: `turn_end` holds the envelope's
+comment, a delta holds a tool name and one truncated argument. `calls/` holds the raw
+stdout and stderr of every harness process, with the exact command line at the top and
+the exit code at the bottom — which is the whole record when a panelist times out or
+exits non-zero, because then there is no envelope to have parsed. One file per call, so
+a resumed turn whose session was refused keeps both the failure and the cold retry.
+Capped at 2 MiB each, keeping both ends and dropping the middle; set
+`capture_console: false` in `council.yaml` to write none at all.
+
+Deleting a session deletes the directory, `calls/` included — nothing has to be cleaned
+up separately.
 
 `events.jsonl` is the contract. Everything any client shows is a fold over it, so a live
 view and a reload of a finished session cannot disagree; it also holds every argument in
@@ -379,6 +402,7 @@ timeouts:
   per_call_phase1: 900   # a plan, including repo exploration
 
 on_failure: skip_with_note   # or 'abort'
+capture_console: true        # keep each harness process's raw output in calls/
 ```
 
 The three limits stop a runaway session, and each measures something different:

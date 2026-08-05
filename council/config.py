@@ -73,6 +73,11 @@ class CouncilConfig:
     protocol: ProtocolConfig = field(default_factory=ProtocolConfig)
     timeouts: TimeoutConfig = field(default_factory=TimeoutConfig)
     on_failure: str = "skip_with_note"
+    #: Keep every harness process's raw output in `<session>/calls/`. On because the
+    #: calls worth reading are the ones that went wrong, and a setting you have to turn
+    #: on beforehand is off precisely when it is needed. A few MB per session, deleted
+    #: with the session.
+    capture_console: bool = True
 
 
 def check_effort(value: object, adapter: str, who: str) -> None:
@@ -128,7 +133,7 @@ def load_config(path: str | Path) -> CouncilConfig:
 
 
 #: Everything council.yaml may say at the top level.
-SECTIONS = {"panel", "protocol", "timeouts", "on_failure"}
+SECTIONS = {"panel", "protocol", "timeouts", "on_failure", "capture_console"}
 
 
 def parse_config(raw: dict) -> CouncilConfig:
@@ -206,6 +211,16 @@ def parse_config(raw: dict) -> CouncilConfig:
             f"on_failure must be 'skip_with_note' or 'abort', got '{on_failure}'"
         )
 
+    capture_console = raw.get("capture_console", True)
+    if not isinstance(capture_console, bool):
+        raise ConfigError(
+            f"capture_console must be true or false, got {capture_console!r}"
+        )
+
     return CouncilConfig(
-        panel=panel, protocol=protocol, timeouts=timeouts, on_failure=on_failure
+        panel=panel,
+        protocol=protocol,
+        timeouts=timeouts,
+        on_failure=on_failure,
+        capture_console=capture_console,
     )

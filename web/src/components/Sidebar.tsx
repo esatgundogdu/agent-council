@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { ago, tokens as fmtTokens } from '../format'
-import type { SessionRow } from '../types'
+import type { SessionRow, Theme } from '../types'
 
 /**
  * Every council on this machine, newest first.
@@ -17,12 +17,16 @@ export function Sidebar({
   onNew,
   onOpen,
   onDelete,
+  theme,
+  onTheme,
 }: {
   sessions: SessionRow[]
   active: string | null
   onNew: () => void
   onOpen: (id: string) => void
   onDelete: (id: string) => void
+  theme: Theme
+  onTheme: (theme: Theme) => void
 }) {
   const [query, setQuery] = useState('')
 
@@ -50,6 +54,15 @@ export function Sidebar({
             {running} running
           </span>
         )}
+        <span className="spacer" />
+        <button
+          className="ghost tiny"
+          title={theme === 'dark' ? 'Read on paper' : 'Read by lamplight'}
+          aria-label={theme === 'dark' ? 'Switch to the light theme' : 'Switch to the dark theme'}
+          onClick={() => onTheme(theme === 'dark' ? 'light' : 'dark')}
+        >
+          {theme === 'dark' ? '☾' : '☀'}
+        </button>
       </div>
 
       <div className="sidebar-actions">

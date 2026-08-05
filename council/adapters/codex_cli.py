@@ -34,6 +34,7 @@ class CodexAdapter(Adapter):
         timeout: int,
         session: str | None = None,
         on_delta=None,
+        call_log=None,
     ) -> Reply:
         with tempfile.TemporaryDirectory(prefix="council-codex-") as tmp:
             last_message = Path(tmp) / "last_message.txt"
@@ -73,6 +74,7 @@ class CodexAdapter(Adapter):
                 timeout=timeout,
                 stdin_data=prompt,
                 on_line=self._line_sink(on_delta),
+                call_log=call_log,
             )
             if not reply.ok:
                 # Under --json a failure dumps the whole event stream; surface the

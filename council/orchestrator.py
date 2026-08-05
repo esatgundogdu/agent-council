@@ -36,6 +36,7 @@ from pathlib import Path
 
 from . import PROMPTS_DIR
 from .adapters import Adapter, AdapterError, Delta, Reply, build_adapter
+from .calls import CallLog, call_filename
 from .config import CouncilConfig
 from .control import Controller
 from .envelope import CONTINUE, READY, Envelope, parse_envelope
@@ -68,6 +69,11 @@ ACCEPTS_SEED = SEEDED_MODES + ("consult",)
 STREAM_FLUSH_CHARS = 120
 STREAM_FLUSH_SECONDS = 0.4
 
+#: Who can have set the task. Not a permission — the CLI, the browser and the main
+#: agent all reach the same endpoint and none of them is privileged — only a label,
+#: so the seat at the head of the table can say whose it is.
+CONVENERS = ("user", "agent")
+
 
 class CouncilError(Exception):
     """The session cannot continue (e.g. too few panelists left)."""
@@ -92,6 +98,12 @@ class SessionPaths:
     @property
     def plans_dir(self) -> Path:
         return self.root / "plans"
+
+    @property
+    def calls_dir(self) -> Path:
+        """Raw console logs, one per harness process. Created on first write rather
+        than by `prepare()`: an empty `calls/` would claim a capture that is off."""
+        return self.root / "calls"
 
     @property
     def transcript(self) -> Path:
@@ -204,10 +216,13 @@ class Council:
         controller: Controller | None = None,
         session_id: str | None = None,
         call_gate: asyncio.Semaphore | None = None,
+        convened_by: str = "user",
     ):
         if mode not in MODES:
             raise CouncilError(f"unknown mode '{mode}'. Known: {', '.join(MODES)}")
         self.config = config
+        #: "agent" or "user". See the `session_created` payload.
+        self.convened_by = convened_by if convened_by in CONVENERS else "user"
         self.panel = list(panel)
         self.paths = paths
         self.project_dir = Path(project_dir)
@@ -240,6 +255,8 @@ class Council:
         #: Panelists whose session has already been abandoned once. A conversation
         #: goes bad once; retrying every round just doubles the bill.
         self._cold_retried: set[str] = set()
+        #: Numbers the console logs. Across the session, not per turn — see `_new_call_log`.
+        self._call_seq = 0
         self._adapters = adapters or self._build_adapters()
         self._templates = {
             name: (self.prompts_dir / f"{name}.md").read_text(encoding="utf-8")
@@ -316,6 +333,29 @@ class Council:
         self.tokens_used += delta
         return delta
 
+    def _new_call_log(
+        self, panelist: Panelist, round_no: int, phase: int, session: str | None
+    ) -> CallLog | None:
+        """A console log for one harness process, or None when capture is off.
+
+        Numbered across the session rather than per turn: a resumed call whose session
+        is refused falls back to a cold one for the same round, and naming both after
+        the round would have one overwrite the other — losing the failure that caused
+        the retry, which is the half worth keeping.
+        """
+        if not self.config.capture_console:
+            return None
+        self._call_seq += 1
+        return CallLog(
+            self.paths.calls_dir / call_filename(self._call_seq, panelist.label, round_no),
+            agent=panelist.label,
+            phase=phase,
+            round_no=round_no,
+            model=panelist.model,
+            effort=panelist.effort,
+            session=session,
+        )
+
     async def _ask(
         self,
         panelist: Panelist,
@@ -323,6 +363,8 @@ class Council:
         timeout: int,
         use_session: bool = True,
         streamer: _Streamer | None = None,
+        round_no: int = 0,
+        phase: int = 2,
     ) -> Reply:
         """Send a prompt to a panelist, continuing its own session where possible.
 
@@ -334,6 +376,10 @@ class Council:
         session = None
         if use_session and self.config.protocol.session_continuity:
             session = self.sessions.get(panelist.label)
+        if streamer is not None:
+            round_no, phase = streamer.round, streamer.phase
+        call_log = self._new_call_log(panelist, round_no, phase, session)
+        started = time.monotonic()
         try:
             if self.call_gate is not None:
                 async with self.call_gate:
@@ -343,6 +389,7 @@ class Council:
                         timeout=timeout,
                         session=session,
                         on_delta=streamer,
+                        call_log=call_log,
                     )
             else:
                 reply = await adapter.ask(
@@ -351,6 +398,7 @@ class Council:
                     timeout=timeout,
                     session=session,
                     on_delta=streamer,
+                    call_log=call_log,
                 )
         except AdapterError as exc:
             reply = Reply(ok=False, error=str(exc))
@@ -362,6 +410,7 @@ class Council:
             # left status.json still claiming to be running, because only CouncilError
             # reaches the handler that writes "failed".
             reply = Reply(ok=False, error=f"{type(exc).__name__}: {exc}")
+        self._note_call(call_log, reply, round_no, phase, time.monotonic() - started)
         if streamer is not None:
             streamer.flush()
             # A timed-out call still opened a conversation; keeping its id means the
@@ -372,6 +421,39 @@ class Council:
         if use_session and reply.session_id:
             self.sessions[panelist.label] = reply.session_id
         return reply
+
+    def _note_call(
+        self,
+        call_log: CallLog | None,
+        reply: Reply,
+        round_no: int,
+        phase: int,
+        seconds: float,
+    ) -> None:
+        """Announce a console log, so the UI can offer it without listing a directory.
+
+        Only when one was actually written: an adapter that raised before starting the
+        process leaves no file, and an event pointing at a missing one is worse than
+        no event.
+        """
+        if call_log is None or not call_log.written:
+            return
+        # Belt and braces. Every path through `run_process` finishes the log, but an
+        # adapter that returns early after starting one would otherwise leave it open
+        # and footerless.
+        call_log.finish(reply.exit_code, seconds, reply.error)
+        self._event(
+            "call_logged",
+            agent=call_log.agent,
+            round=round_no,
+            phase=phase,
+            file=call_log.path.name,
+            seconds=round(seconds, 1),
+            exit_code=reply.exit_code,
+            bytes=call_log.bytes_seen,
+            truncated=call_log.truncated,
+            ok=reply.ok,
+        )
 
     def _heartbeat(self) -> None:
         """Running totals, at every turn boundary.
@@ -471,6 +553,11 @@ class Council:
             protocol=vars(self.config.protocol),
             timeouts=vars(self.config.timeouts),
             on_failure=self.config.on_failure,
+            # Who set the task — the main agent working in an editor, or a person at a
+            # terminal or in the browser. It is a self-declaration, not an authenticated
+            # fact, and it exists so the chair at the head of the table can be named
+            # correctly rather than to grant anybody anything.
+            convened_by=self.convened_by,
             task_chars=len(self.task_text),
             seed_chars=len(self.seed_text),
             context_chars=len(self.context_text),
@@ -1158,7 +1245,11 @@ class Council:
         # Cold call on purpose: a summarising request must not be injected into the
         # panelist's own debate session, where it would pollute its context.
         reply = await self._ask(
-            panelist, prompt, self.config.timeouts.per_call, use_session=False
+            panelist,
+            prompt,
+            self.config.timeouts.per_call,
+            use_session=False,
+            round_no=rounds[-1],
         )
         summary = reply.text.strip() if reply.ok else ""
         problem = _unusable_summary(summary)

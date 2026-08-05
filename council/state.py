@@ -148,6 +148,7 @@ class Reducer:
         self.open_turns: dict[str, dict] = {}
         self.activity: dict[str, dict] = {}
         self.trails: dict[str, list[str]] = {}
+        self.calls: dict[str, list[dict]] = {}
         self.health: list[dict] = []
         self.controls: list[dict] = []
         self.dropped: dict[str, str] = {}
@@ -176,7 +177,7 @@ class Reducer:
             for k in (
                 "id", "project_dir", "mode", "protocol", "timeouts",
                 "on_failure", "task_chars", "seed_chars", "context_chars",
-                "schema", "started_at",
+                "schema", "started_at", "convened_by",
             )
         }
         raw_ids = event.get("identities")
@@ -389,6 +390,30 @@ class Reducer:
         }
         self._account(agent, event.get("tokens"))
 
+    def _on_call_logged(self, event: dict, agent) -> None:
+        """One harness process left a console log behind.
+
+        Recorded per panelist rather than per turn for the same reason the trail is:
+        a Phase 1 call carries round 0 and never enters `rounds`, and that call — the
+        one that reads the whole repository — is the one most likely to be the reason
+        somebody went looking for a console log.
+        """
+        name = event.get("file")
+        if not isinstance(agent, str) or not isinstance(name, str) or not name:
+            return
+        self.calls.setdefault(agent, []).append(
+            {
+                "file": name,
+                "round": _round_of(event),
+                "phase": event.get("phase"),
+                "seconds": event.get("seconds"),
+                "exit_code": event.get("exit_code"),
+                "bytes": event.get("bytes"),
+                "truncated": bool(event.get("truncated")),
+                "ok": bool(event.get("ok")),
+            }
+        )
+
     def _on_panelist_dropped(self, event: dict, agent) -> None:
         if not isinstance(agent, str):
             return
@@ -515,6 +540,7 @@ class Reducer:
                     "adapter": self.adapters.get(label),
                     "effort": self.efforts.get(label),
                     "trail": self.trails.get(label, []),
+                    "calls": self.calls.get(label, []),
                     "dropped": label in self.dropped,
                     "drop_reason": self.dropped.get(label),
                     "verdict": turn.get("verdict") if turn else None,
@@ -575,6 +601,9 @@ def compose_state(session_dir: str | Path, reducer: "Reducer", status: dict) -> 
             "dir": str(session_dir),
             "project_dir": meta.get("project_dir") or str(session_dir.parent.parent),
             "mode": meta.get("mode") or "independent",
+            # Sessions recorded before this field existed have no convener; "user" is
+            # the honest default, since the main agent's own command sets it explicitly.
+            "convened_by": meta.get("convened_by") or "user",
             "protocol": meta.get("protocol") or {},
             "timeouts": meta.get("timeouts") or {},
             "started_at": meta.get("started_at"),
@@ -613,8 +642,8 @@ def build_agent_thread(session_dir: str | Path, label: str) -> dict:
     """One panelist's own conversation: what we sent it, and what it did with it.
 
     This is the answer to "what actually happened inside Agent-C" — the prompts, the
-    files it opened, its replies, its failures — and it is the first thing to read when
-    a panelist behaves strangely.
+    files it opened, what it said as it worked, its replies, its failures — and it is
+    the first thing to read when a panelist behaves strangely.
     """
     session_dir = Path(session_dir)
     entries: list[dict] = []
@@ -635,7 +664,14 @@ def build_agent_thread(session_dir: str | Path, label: str) -> dict:
         if event.get("agent") != label:
             continue
 
-        if isinstance(event.get("tokens"), int):
+        # Only the events that close a call carry a total. `turn_delta kind="usage"`
+        # carries the *turn's running* total and is re-emitted as it grows, so adding
+        # every event with a `tokens` field counted the same tokens once per usage
+        # delta — measured at exactly 2× on a real session, against the same panelist's
+        # figure in the roster. Same three events as `Reducer._account`, deliberately.
+        if kind in ("turn_end", "plan_received", "turn") and isinstance(
+            event.get("tokens"), int
+        ):
             tokens += event["tokens"]
 
         if kind == "prompt":
@@ -659,6 +695,25 @@ def build_agent_thread(session_dir: str | Path, label: str) -> dict:
                     "target": event.get("target"),
                 }
             )
+        elif kind == "turn_delta" and event.get("kind") in ("text", "status"):
+            # What it said between tool calls. These were being read out of the log for
+            # the roster's activity line and dropped here, so this screen showed a
+            # panelist opening eleven files and never a word about why — which is
+            # exactly the half a reader comes here for. Interleaved by `seq`, so the
+            # narration sits where it happened rather than in a block of its own.
+            text = event.get("text")
+            if isinstance(text, str) and text.strip():
+                entries.append(
+                    {
+                        "role": "narration",
+                        "seq": event.get("seq"),
+                        "ts": event.get("ts"),
+                        "round": event.get("round"),
+                        "phase": event.get("phase"),
+                        "kind": event.get("kind"),
+                        "text": text,
+                    }
+                )
         elif kind in ("turn_end", "plan_received"):
             entries.append(
                 {

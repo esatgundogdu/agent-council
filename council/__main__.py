@@ -36,6 +36,7 @@ from .client import Client
 from .config import ConfigError, CouncilConfig, PanelistConfig, load_config
 from .orchestrator import (
     ACCEPTS_SEED,
+    CONVENERS,
     MODES,
     SEEDED_MODES,
     TERMINATION_LABELS,
@@ -86,6 +87,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="scripted panel, no model calls — for trying the UI out for free",
     )
     start.add_argument("--scenario", default=None, help="JSON scenario for --mock")
+    start.add_argument(
+        "--by",
+        default="user",
+        choices=list(CONVENERS),
+        help="who set the task. Only names the seat at the head of the table in the UI; "
+        "it grants nothing. `/council` passes `agent`.",
+    )
 
     watch = sub.add_parser("watch", help="follow a running session in this terminal")
     watch.add_argument("session", nargs="?", help="session id (default: the newest)")
@@ -269,6 +277,7 @@ def cmd_start(args) -> int:
         "register_project": True,
         "task": task,
         "mode": args.mode,
+        "convened_by": args.by,
     }
     if seed:
         payload["seed"] = seed
@@ -456,6 +465,11 @@ def cmd_control(args) -> int:
             return EXIT_CONFIG
         payload["text"] = args.text
         payload["author"] = "agent"
+        # `author` names who the panel is told is speaking; `by` names who issued the
+        # command. Only the first was being sent, so the control log recorded every
+        # agent chair message as the user's — one command described two different
+        # ways in the same session.
+        payload["by"] = "agent"
     if args.action == "stop":
         payload["how"] = args.how
     if args.action == "extend":

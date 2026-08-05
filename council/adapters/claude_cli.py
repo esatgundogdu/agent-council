@@ -29,7 +29,13 @@ class ClaudeAdapter(Adapter):
         return ClaudeLineParser()
 
     async def ask(
-        self, prompt: str, cwd: str, timeout: int, session: str | None = None, on_delta=None
+        self,
+        prompt: str,
+        cwd: str,
+        timeout: int,
+        session: str | None = None,
+        on_delta=None,
+        call_log=None,
     ) -> Reply:
         argv = [
             self.binary,
@@ -60,6 +66,7 @@ class ClaudeAdapter(Adapter):
             timeout=timeout,
             stdin_data=prompt,
             on_line=self._line_sink(on_delta),
+            call_log=call_log,
         )
         # Parsed even on a non-zero exit. `claude -p` exits 1 for an expired login or a
         # rate limit, but still emits a terminal `result` event that names the cause —

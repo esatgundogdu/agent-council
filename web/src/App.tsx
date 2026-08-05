@@ -5,9 +5,26 @@ import { ago, duration, tokens as fmtTokens } from './format'
 import { NewCouncil } from './components/NewCouncil'
 import { Sidebar } from './components/Sidebar'
 import { SessionView } from './components/SessionView'
-import type { SessionRow } from './types'
+import type { SessionRow, Theme } from './types'
 
 type Route = { name: 'home' } | { name: 'new' } | { name: 'session'; id: string }
+
+const THEME_KEY = 'council.theme'
+
+/**
+ * Paper unless this browser has said otherwise.
+ *
+ * Deliberately not `prefers-color-scheme`: the default is a decision about what this
+ * application looks like, and a machine set to dark would otherwise never see it.
+ * One click changes it, and the choice sticks.
+ */
+function storedTheme(): Theme {
+  try {
+    return window.localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'
+  } catch {
+    return 'light' // private mode, or storage disabled
+  }
+}
 
 function parse(path: string): Route {
   const match = path.match(/^\/session\/([^/]+)/)
@@ -20,6 +37,16 @@ export function App() {
   const [route, setRoute] = useState<Route>(() => parse(window.location.pathname))
   const [sessions, setSessions] = useState<SessionRow[]>([])
   const [confirming, setConfirming] = useState<SessionRow | null>(null)
+  const [theme, setTheme] = useState<Theme>(storedTheme)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    try {
+      window.localStorage.setItem(THEME_KEY, theme)
+    } catch {
+      /* not being able to remember the choice is not a reason to refuse to make it */
+    }
+  }, [theme])
 
   const go = useCallback((path: string) => {
     window.history.pushState({}, '', path)
@@ -57,6 +84,8 @@ export function App() {
         onNew={() => go('/new')}
         onOpen={(id) => go(`/session/${encodeURIComponent(id)}`)}
         onDelete={(id) => setConfirming(sessions.find((s) => s.id === id) ?? null)}
+        theme={theme}
+        onTheme={setTheme}
       />
       <main className="main">
         {route.name === 'new' && (

@@ -108,6 +108,13 @@ class SessionSpec:
     #: JSON script for the `mock` adapter — the whole protocol, no model calls. How
     #: the UI is developed without spending a subscription on every reload.
     scenario: str | None = None
+    #: "agent" or "user" — who set the task. A self-declaration by the client, worth
+    #: exactly as much as that: the CLI, the browser and the main agent all reach the
+    #: same endpoint and none of them is privileged. It names the seat at the head of
+    #: the table, and nothing else reads it.
+    convened_by: str = "user"
+    #: Keep every harness process's console output in `<session>/calls/`.
+    capture_console: bool = True
 
     def config(self) -> CouncilConfig:
         return CouncilConfig(
@@ -115,6 +122,7 @@ class SessionSpec:
             protocol=self.protocol,
             timeouts=self.timeouts,
             on_failure=self.on_failure,
+            capture_console=self.capture_console,
         )
 
 
@@ -199,6 +207,7 @@ class SessionRuntime:
             controller=self.controller,
             session_id=self.id,
             call_gate=self._call_gate,
+            convened_by=self.spec.convened_by,
         )
         self.state = "running"
         self.task = asyncio.create_task(self._run(), name=f"council-{self.id}")
@@ -544,6 +553,12 @@ def build_spec(
         timeouts=timeouts,
         on_failure=on_failure,
         scenario=payload.get("scenario") or None,
+        convened_by="agent" if payload.get("convened_by") == "agent" else "user",
+        capture_console=(
+            defaults.capture_console
+            if payload.get("capture_console") is None
+            else bool(payload.get("capture_console"))
+        ),
     )
 
 

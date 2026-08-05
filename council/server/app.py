@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -35,6 +36,10 @@ from .registry import Registry, RegistryError, build_spec, defaults_for_form
 from .security import TOKEN_COOKIE, TOKEN_QUERY, Guard
 
 WEB_DIR = PACKAGE_ROOT / "council" / "web"
+
+#: The only file names the console-log route will open. Must keep matching what
+#: `council.calls.call_filename` produces.
+CALL_FILE = re.compile(r"^\d+-[a-z0-9\-]+-r\d+\.log$")
 
 #: Silence between events after which a comment frame is sent, so proxies and sleeping
 #: laptops do not quietly drop an idle stream.
@@ -217,6 +222,15 @@ def create_app(
         if not letter.isalpha():
             raise HTTPException(400, "not a panelist label")
         return _artefact(_view(request, session_id).dir / "plans" / f"agent-{letter}.md")
+
+    @app.get("/api/sessions/{session_id}/calls/{name}", dependencies=protected)
+    async def call_log(request: Request, session_id: str, name: str) -> PlainTextResponse:
+        # Matched against the exact shape `calls.call_filename` mints, not sanitised.
+        # The set of valid names is small and known, so a pattern is both simpler and
+        # stricter — the same reasoning, and the same class of hole, as `_check_session_id`.
+        if not CALL_FILE.match(name):
+            raise HTTPException(400, f"not a call log name: {name!r}")
+        return _artefact(_view(request, session_id).dir / "calls" / name)
 
     # ---- streams ---------------------------------------------------------
 

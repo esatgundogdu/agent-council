@@ -53,6 +53,8 @@ export const api = {
   agent: (id: string, label: string) =>
     request<AgentThread>(`/api/sessions/${id}/agents/${label}`),
   plan: (id: string, label: string) => request<string>(`/api/sessions/${id}/plans/${label}`),
+  /** One harness process's raw output. `name` comes from `panel[].calls`. */
+  call: (id: string, name: string) => request<string>(`/api/sessions/${id}/calls/${name}`),
 }
 
 /**
