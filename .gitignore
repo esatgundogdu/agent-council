@@ -10,3 +10,5 @@ dist/
 .council-*.md
 .DS_Store
 .claude/settings.local.json
+# TypeScript incremental build state
+web/tsconfig.tsbuildinfo
