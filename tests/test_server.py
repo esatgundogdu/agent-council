@@ -316,8 +316,38 @@ def test_a_panelists_console_logs_are_listed_and_readable(client, project):
     for call in member["calls"]:
         body = client.get(f"/api/sessions/{created['id']}/calls/{call['file']}")
         assert body.status_code == 200
-        assert "# council call log" in body.text
-        assert f"# agent    : {member['label']}" in body.text
+        payload = body.json()
+        assert "# council call log" in payload["text"]
+        assert f"# agent    : {member['label']}" in payload["text"]
+
+
+def test_a_console_log_can_be_read_from_where_the_last_read_stopped(client, project):
+    """A running call is polled every few seconds.
+
+    Reading a capped 2 MiB file whole each time, synchronously on the event loop the
+    harness pumps run on, costs far more than everything the capture side does per
+    line. With an offset a poll that finds nothing new is a seek and a stat.
+    """
+    created = start(client, project)
+    wait_for(client, created["id"])
+    name = client.get(f"/api/sessions/{created['id']}").json()["panel"][0]["calls"][0]["file"]
+    url = f"/api/sessions/{created['id']}/calls/{name}"
+
+    whole = client.get(url).json()
+    # Bytes, not characters — the header alone contains an em dash. A client never has
+    # to work this out: it passes back the offset it was given, which is what the
+    # inspector does.
+    first_line = len(whole["text"].split("\n")[0].encode("utf-8")) + 1
+    rest = client.get(f"{url}?offset={first_line}").json()
+
+    assert rest["offset"] == whole["offset"], "both reads end at the same place"
+    assert whole["text"].endswith(rest["text"])
+    assert not rest["text"].startswith("# council call log")
+    # And a poll that has already read everything gets nothing back, not the file again.
+    assert client.get(f"{url}?offset={whole['offset']}").json()["text"] == ""
+    # An offset past the end is a client that read while the file was being rewritten,
+    # not an error.
+    assert client.get(f"{url}?offset=99999999").json()["text"] == ""
 
 
 def test_the_console_log_route_opens_only_names_it_could_have_minted(client, project):

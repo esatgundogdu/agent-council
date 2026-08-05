@@ -224,13 +224,34 @@ def create_app(
         return _artefact(_view(request, session_id).dir / "plans" / f"agent-{letter}.md")
 
     @app.get("/api/sessions/{session_id}/calls/{name}", dependencies=protected)
-    async def call_log(request: Request, session_id: str, name: str) -> PlainTextResponse:
+    async def call_log(
+        request: Request, session_id: str, name: str, offset: int = 0
+    ) -> dict:
+        """One console log, or the part of it the caller has not read yet.
+
+        `offset` exists because a running call is polled: reading a 2 MiB file whole,
+        every few seconds, synchronously on the event loop the harness pumps run on, is
+        far more expensive than everything the capture side does per line. With it a
+        poll that finds nothing new costs a seek and a stat.
+        """
         # Matched against the exact shape `calls.call_filename` mints, not sanitised.
         # The set of valid names is small and known, so a pattern is both simpler and
         # stricter — the same reasoning, and the same class of hole, as `_check_session_id`.
         if not CALL_FILE.match(name):
             raise HTTPException(400, f"not a call log name: {name!r}")
-        return _artefact(_view(request, session_id).dir / "calls" / name)
+        path = _view(request, session_id).dir / "calls" / name
+        if not path.is_file():
+            raise HTTPException(404, f"no such call log: {name}")
+        try:
+            with path.open("rb") as handle:
+                handle.seek(max(0, offset))
+                chunk = handle.read()
+                end = handle.tell()
+        except OSError as exc:
+            raise HTTPException(500, f"could not read {name}: {exc}") from exc
+        # `errors="replace"`: a seek can land mid-character, and a mangled glyph at the
+        # seam is better than refusing to show a log at all.
+        return {"offset": end, "text": chunk.decode("utf-8", "replace")}
 
     # ---- streams ---------------------------------------------------------
 

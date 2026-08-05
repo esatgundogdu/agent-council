@@ -53,8 +53,17 @@ export const api = {
   agent: (id: string, label: string) =>
     request<AgentThread>(`/api/sessions/${id}/agents/${label}`),
   plan: (id: string, label: string) => request<string>(`/api/sessions/${id}/plans/${label}`),
-  /** One harness process's raw output. `name` comes from `panel[].calls`. */
-  call: (id: string, name: string) => request<string>(`/api/sessions/${id}/calls/${name}`),
+  /**
+   * One harness process's raw output, from `offset` bytes in.
+   *
+   * `panel[].calls` supplies the name. The offset is what makes tailing a live log
+   * cheap: without it every poll re-reads the whole file, which for a capped 2 MiB
+   * log is megabytes a second for nothing.
+   */
+  call: (id: string, name: string, offset = 0) =>
+    request<{ offset: number; text: string }>(
+      `/api/sessions/${id}/calls/${name}?offset=${offset}`,
+    ),
 }
 
 /**

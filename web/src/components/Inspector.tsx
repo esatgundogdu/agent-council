@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
+
 import { api } from '../api'
 import { duration, tokens as fmtTokens } from '../format'
 import { AgentThread } from './AgentThread'
@@ -151,20 +152,47 @@ function Console({ sessionId, calls }: { sessionId: string; calls: CallRecord[] 
   const [open, setOpen] = useState<string | null>(null)
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const live = calls.some((call) => call.file === open && !call.done)
+  //: How far into the open file we have read. A ref, not state: a poll that finds
+  //: nothing new must not re-render, and it must not restart the effect either.
+  const read = useRef(0)
+
+  // Clearing is keyed on the file alone. Folded into the loader below it would also
+  // fire when `live` flips false at the end of a call, blanking a log the reader is
+  // in the middle of for as long as the last fetch takes.
+  useEffect(() => {
+    setText(null)
+    setError(null)
+    read.current = 0
+  }, [open])
 
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    setText(null)
-    setError(null)
-    api
-      .call(sessionId, open)
-      .then((body) => !cancelled && setText(body))
-      .catch((exc) => !cancelled && setError(exc instanceof Error ? exc.message : String(exc)))
-    return () => {
+    const load = () =>
+      api
+        .call(sessionId, open, read.current)
+        .then((body) => {
+          if (cancelled) return
+          read.current = body.offset
+          // Appended, not replaced: the poll only ever fetches what is new.
+          if (body.text) setText((prev) => (prev ?? '') + body.text)
+          else setText((prev) => prev ?? '')
+        })
+        .catch((exc) => !cancelled && setError(exc instanceof Error ? exc.message : String(exc)))
+    void load()
+    // A call still running is the one worth watching — a panelist that has been quiet
+    // for six minutes is a question this file answers and nothing else does. Only
+    // while such a log is open, so the poll ends when the call does or the drawer does.
+    if (!live) return () => {
       cancelled = true
     }
-  }, [sessionId, open])
+    const timer = window.setInterval(load, 3000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [sessionId, open, live])
 
   if (!calls.length) {
     return (
@@ -182,15 +210,26 @@ function Console({ sessionId, calls }: { sessionId: string; calls: CallRecord[] 
         {calls.map((call) => (
           <button
             key={call.file}
-            className={`call${call.file === open ? ' active' : ''}${call.ok ? '' : ' bad'}`}
+            className={[
+              'call',
+              call.file === open ? 'active' : '',
+              call.done && !call.ok ? 'bad' : '',
+              call.done ? '' : 'running',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             onClick={() => setOpen(call.file === open ? null : call.file)}
           >
             <span>{call.phase === 1 ? 'phase 1 · plan' : `round ${call.round}`}</span>
             <span className="when">
-              {call.ok ? duration(call.seconds) : `failed · ${duration(call.seconds)}`}
+              {!call.done
+                ? 'running now'
+                : call.ok
+                  ? duration(call.seconds)
+                  : `failed · ${duration(call.seconds)}`}
             </span>
             <span className="size">
-              {bytes(call.bytes)}
+              {call.done ? bytes(call.bytes) : 'live'}
               {call.truncated ? ' · clipped' : ''}
             </span>
           </button>
@@ -199,7 +238,12 @@ function Console({ sessionId, calls }: { sessionId: string; calls: CallRecord[] 
 
       {error && <div className="error-banner">{error}</div>}
       {open && !text && !error && <div className="loading">loading…</div>}
-      {open && text && <pre className="console">{text}</pre>}
+      {open && text && (
+        <>
+          {live && <div className="note">Still running — this reloads every few seconds.</div>}
+          <pre className="console">{text}</pre>
+        </>
+      )}
     </>
   )
 }

@@ -346,14 +346,26 @@ class Council:
         if not self.config.capture_console:
             return None
         self._call_seq += 1
+        name = call_filename(self._call_seq, panelist.label, round_no)
         return CallLog(
-            self.paths.calls_dir / call_filename(self._call_seq, panelist.label, round_no),
+            self.paths.calls_dir / name,
             agent=panelist.label,
             phase=phase,
             round_no=round_no,
             model=panelist.model,
             effort=panelist.effort,
             session=session,
+            # Announced when it opens, not when it closes. A Phase 1 call can run for
+            # fifteen minutes, and a log that only appears afterwards is missing for
+            # exactly the stretch anybody would have opened it during.
+            on_open=lambda: self._event(
+                "call_logged",
+                agent=panelist.label,
+                round=round_no,
+                phase=phase,
+                file=name,
+                done=False,
+            ),
         )
 
     async def _ask(
@@ -403,6 +415,18 @@ class Council:
         except AdapterError as exc:
             reply = Reply(ok=False, error=str(exc))
         except asyncio.CancelledError:
+            # A hard stop still leaves a finished file behind. Without this the only
+            # event about it was the one emitted when it opened, saying `done=False`,
+            # so the log of the call that was interrupted — the one worth reading —
+            # stayed marked as running for the life of the session, and the UI polled
+            # a file that would never change again.
+            self._note_call(
+                call_log,
+                Reply(ok=False, error="cancelled"),
+                round_no,
+                phase,
+                time.monotonic() - started,
+            )
             raise  # a stop, not a failure — must not be swallowed
         except Exception as exc:  # noqa: BLE001
             # One panelist's harness misbehaving is a failed turn, which this protocol
@@ -430,7 +454,10 @@ class Council:
         phase: int,
         seconds: float,
     ) -> None:
-        """Announce a console log, so the UI can offer it without listing a directory.
+        """Close a console log, and say how the call it recorded turned out.
+
+        The second event for this file — the first went out when it opened. Folding is
+        by filename, so this replaces that entry rather than adding one.
 
         Only when one was actually written: an adapter that raised before starting the
         process leaves no file, and an event pointing at a missing one is worse than
@@ -442,6 +469,12 @@ class Council:
         # adapter that returns early after starting one would otherwise leave it open
         # and footerless.
         call_log.finish(reply.exit_code, seconds, reply.error)
+        # A clean exit is not a usable turn. Every adapter rejects a harness that exits
+        # 0 having produced nothing parseable — and by the time it does, this file is
+        # closed saying `exit code: 0` with no error. True of the process, false about
+        # the call, and nothing in the log said so.
+        if not reply.ok and reply.error:
+            call_log.note("rejected", reply.error)
         self._event(
             "call_logged",
             agent=call_log.agent,
@@ -453,6 +486,7 @@ class Council:
             bytes=call_log.bytes_seen,
             truncated=call_log.truncated,
             ok=reply.ok,
+            done=True,
         )
 
     def _heartbeat(self) -> None:

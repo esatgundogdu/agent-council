@@ -619,6 +619,11 @@ label { display: block; }
 .call .size { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-faint); margin-left: auto; }
 .call.bad { border-color: var(--danger); }
 .call.bad .when { color: var(--danger); }
+.call.running { border-color: var(--live); }
+.call.running .when, .call.running .size { color: var(--live); }
+@media (prefers-reduced-motion: no-preference) {
+  .call.running .when { animation: pulse 2.2s ease-in-out infinite; }
+}
 .console {
   font-family: var(--font-mono);
   font-size: 0.74rem;

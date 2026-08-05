@@ -20,6 +20,7 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 #: How much of one call is kept. A codex turn under `--json` prints a few hundred
 #: kilobytes; a harness stuck in a loop prints until it is killed.
@@ -73,6 +74,7 @@ class CallLog:
         session: str | None = None,
         limit: int = MAX_CALL_LOG_BYTES,
         tail_bytes: int = TAIL_BYTES,
+        on_open: Callable[[], None] | None = None,
     ) -> None:
         self.path = path
         self.agent = agent
@@ -83,6 +85,11 @@ class CallLog:
         self.session = session
         self.limit = limit
         self.tail_bytes = tail_bytes
+        #: Announces the file the moment it exists. The caller cannot do this itself:
+        #: it does not get control back between starting the process and the call
+        #: ending, which for a Phase 1 read of a large repository is fifteen minutes —
+        #: precisely the stretch somebody would want to look at the log.
+        self.on_open = on_open
 
         self.written = 0
         self.out_bytes = 0
@@ -110,6 +117,16 @@ class CallLog:
             self._closed = True
             return
         self._raw(_header(self, argv, cwd))
+        # Only once the header is actually on disk. `open("w")` succeeding leaves a
+        # zero-byte file, so announcing a log whose first write failed produces a
+        # readable-but-empty file that `finish` then refuses to complete — an entry
+        # the UI shows as running for ever, on a screen whose job is saying which
+        # calls are.
+        if self.on_open is not None and self.written:
+            try:
+                self.on_open()
+            except Exception:  # noqa: BLE001 - announcing a log is never worth a turn
+                pass
 
     def write(self, stream: str, line: str) -> None:
         """Record one line. `stream` is "out" or "err"."""
@@ -121,17 +138,58 @@ class CallLog:
         if self._handle is None:
             return
         text = line if line.endswith("\n") else line + "\n"
-        if self.written + len(text) <= self.limit:
+        # `not self.truncated` is load-bearing. Without it a short line arriving after
+        # the cap was hit still fits under `limit` and goes back into the head — landing
+        # in the file *before* content that was written to the tail earlier. A console
+        # log whose lines are out of order is worse than one that is short.
+        if not self.truncated and self.written + len(text) <= self.limit:
             self._raw(text)
             return
-        # Past the cap: keep writing into a bounded tail instead, so the end of the
-        # call survives and only the middle is lost.
-        self.truncated = True
+        if not self.truncated:
+            self._begin_tail()
         self._tail.append(text)
         self._tail_bytes += len(text)
-        while self._tail_bytes > self.tail_bytes and len(self._tail) > 1:
-            self.skipped += len(self._tail.popleft())
-            self._tail_bytes = sum(len(item) for item in self._tail)
+        self._trim_tail()
+
+    def _begin_tail(self) -> None:
+        """Say in the file itself that the cap has been reached.
+
+        A reader watching a live log otherwise sees it simply stop growing, with no way
+        to tell a flooding harness from a hung one — which is the exact distinction they
+        opened it to make.
+        """
+        self.truncated = True
+        self._raw(
+            f"\n#{'─' * 76}\n"
+            f"# The {self.limit // (1024 * 1024)} MiB cap was reached here. The call is\n"
+            f"# still running and still printing; the last {self.tail_bytes // 1024} kB of\n"
+            f"# what follows is being held and is appended when it ends.\n"
+            f"#{'─' * 76}\n\n"
+        )
+
+    def _trim_tail(self) -> None:
+        """Keep the tail inside its budget, newest content first.
+
+        Trims the front of the oldest entry rather than dropping it whole. stdout and
+        stderr are teed in from two independently scheduled readers, so "oldest" is not
+        "least valuable": a stray stderr line arriving after the harness's terminal
+        event would otherwise evict that event outright. Degrading it to its own last
+        bytes keeps the part that names the outcome.
+
+        A terminal event larger than `tail_bytes` still cannot be kept whole. That is
+        the honest bound of a fixed budget, and the footer reports what was dropped.
+        """
+        while self._tail_bytes > self.tail_bytes and self._tail:
+            excess = self._tail_bytes - self.tail_bytes
+            oldest = self._tail[0]
+            if len(oldest) <= excess:
+                self._tail.popleft()
+                self._tail_bytes -= len(oldest)
+                self.skipped += len(oldest)
+            else:
+                self._tail[0] = oldest[excess:]
+                self._tail_bytes -= excess
+                self.skipped += excess
 
     def finish(self, exit_code: int | None, seconds: float, error: str = "") -> None:
         """Flush the tail, write the footer, close. Safe to call twice."""
@@ -141,10 +199,7 @@ class CallLog:
         if self._handle is None:
             return
         if self.truncated:
-            self._raw(
-                f"\n#  … {self.skipped:,} bytes omitted here "
-                f"({self.limit // (1024 * 1024)} MiB cap; the end follows) …\n\n"
-            )
+            self._raw(f"#  … {self.skipped:,} bytes dropped from the middle …\n\n")
             for line in self._tail:
                 self._raw(line)
         self._raw(_footer(self, exit_code, seconds, error))
@@ -153,6 +208,26 @@ class CallLog:
         except OSError:
             pass
         self._handle = None
+
+    def note(self, label: str, text: str) -> None:
+        """Append something learned after the process had already exited.
+
+        Every adapter can turn a clean exit into a failed turn: a harness that returns
+        nothing usable exits 0, and the reply is rejected afterwards. By then this file
+        is closed saying `exit code: 0` and no error — which is true of the process and
+        false about the call, and the reader has no way to tell.
+
+        Appended rather than folded into the footer, deliberately. The exit code stays
+        the process's own; this is the council's verdict on what it produced, and
+        conflating the two makes the log lie in the other direction.
+        """
+        if not text.strip() or not self.written:
+            return
+        try:
+            with self.path.open("a", encoding="utf-8", errors="replace", newline="") as handle:
+                handle.write(f"# {label:<9}: {text.strip()[:2000]}\n")
+        except OSError:
+            pass
 
     # -- reporting ---------------------------------------------------------
 

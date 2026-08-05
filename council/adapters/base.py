@@ -36,6 +36,11 @@ MAX_LINE_BYTES = 4 * 1024 * 1024
 
 READ_CHUNK = 64 * 1024
 
+#: How long the readers get, after the process has ended, to finish what is still in
+#: the pipes. Generous for a dead child, short enough that a grandchild holding the
+#: write end open cannot stall the turn after it.
+DRAIN_SECONDS = 10.0
+
 WINDOWS = os.name == "nt"
 
 #: ERROR_FILENAME_EXCED_RANGE. Windows caps the whole command line at 32767 characters
@@ -270,40 +275,64 @@ async def run_process(
         log.finish(None, time.monotonic() - started, str(error))
         raise error from exc
 
-    async def work() -> tuple[str, str]:
-        feed = asyncio.create_task(_feed_stdin(proc, stdin_data))
-        out = asyncio.create_task(_pump(proc.stdout, on_line, log, "out"))
-        err = asyncio.create_task(_pump(proc.stderr, None, log, "err"))
-        try:
-            stdout, stderr = await asyncio.gather(out, err)
-        finally:
-            feed.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await feed
-        await proc.wait()
-        return stdout, stderr
+    feed = asyncio.create_task(_feed_stdin(proc, stdin_data))
+    out_task = asyncio.create_task(_pump(proc.stdout, on_line, log, "out"))
+    err_task = asyncio.create_task(_pump(proc.stderr, None, log, "err"))
 
+    async def finish_reading() -> tuple[str, str]:
+        """Let both pumps run to EOF and hand back everything they read."""
+        return await asyncio.gather(out_task, err_task)
+
+    timed_out = False
     try:
-        out, err = await asyncio.wait_for(work(), timeout=timeout)
+        # The deadline is on the *process*, not on the reading.
+        #
+        # It used to wrap the whole thing, so a timeout cancelled the pumps — and a
+        # cancelled pump loses two things at once: the bytes still in the pipe, and its
+        # own accumulated buffer, which is what every adapter parses. Killing the child
+        # instead makes both pipes hit EOF, and the pumps then finish on their own with
+        # everything the process managed to print. A timed-out turn's log is the only
+        # record that turn leaves; it should be the whole one.
+        #
+        # No deadlock risk in waiting on the process while it still holds full pipes:
+        # the pumps are draining them concurrently, which is the reason that hazard
+        # exists and the reason this is safe.
+        try:
+            await asyncio.wait_for(asyncio.shield(proc.wait()), timeout=timeout)
+        except asyncio.TimeoutError:
+            timed_out = True
+            await _kill(proc)
+        # Bounded: a grandchild holding the write end open would otherwise keep both
+        # pipes from ever reaching EOF, and this call would never return.
+        out, err = await asyncio.wait_for(finish_reading(), timeout=DRAIN_SECONDS)
     except asyncio.TimeoutError:
+        # The drain itself overran — something is still holding the pipes open.
+        out = err = ""
+        for task in (out_task, err_task):
+            task.cancel()
         await _kill(proc)
-        # The one case where this log is the *only* record of the call: a timed-out
-        # turn has no `turn_end`, no envelope and no text — just the note that it ran
-        # out of time. What it was doing for those fifteen minutes is in here.
+    except BaseException:
+        # Any other way out — a cancellation from `stop --how hard`, or something
+        # raised while pumping — must still take the child with it. Only the timeout
+        # path killed the tree, so a harness could be left running and spending after
+        # the call that owned it had gone.
+        for task in (out_task, err_task):
+            task.cancel()
+        await _kill(proc)
+        log.finish(None, time.monotonic() - started, "cancelled")
+        raise
+    finally:
+        feed.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await feed
+
+    if timed_out:
         log.finish(None, time.monotonic() - started, f"timed out after {timeout}s")
         return Reply(
             ok=False,
             error=f"timed out after {timeout}s",
             duration=time.monotonic() - started,
         )
-    except BaseException:
-        # Any other way out — a cancellation from `stop --how hard`, or something
-        # raised while pumping — must still take the child with it. Only the timeout
-        # path killed the tree, so a harness could be left running and spending after
-        # the call that owned it had gone.
-        await _kill(proc)
-        log.finish(None, time.monotonic() - started, "cancelled")
-        raise
 
     duration = time.monotonic() - started
     if proc.returncode != 0:

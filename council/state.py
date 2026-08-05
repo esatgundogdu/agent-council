@@ -391,28 +391,39 @@ class Reducer:
         self._account(agent, event.get("tokens"))
 
     def _on_call_logged(self, event: dict, agent) -> None:
-        """One harness process left a console log behind.
+        """A harness process's console log: once when it opens, once when it closes.
+
+        Folded by filename, so the second record replaces the first rather than
+        listing the same call twice. The pair is what makes a running call visible —
+        a Phase 1 read of a large repository takes minutes, and a log announced only
+        on completion is absent for exactly the stretch somebody would open it.
 
         Recorded per panelist rather than per turn for the same reason the trail is:
-        a Phase 1 call carries round 0 and never enters `rounds`, and that call — the
-        one that reads the whole repository — is the one most likely to be the reason
-        somebody went looking for a console log.
+        a Phase 1 call carries round 0 and never enters `rounds`.
         """
         name = event.get("file")
         if not isinstance(agent, str) or not isinstance(name, str) or not name:
             return
-        self.calls.setdefault(agent, []).append(
-            {
-                "file": name,
-                "round": _round_of(event),
-                "phase": event.get("phase"),
-                "seconds": event.get("seconds"),
-                "exit_code": event.get("exit_code"),
-                "bytes": event.get("bytes"),
-                "truncated": bool(event.get("truncated")),
-                "ok": bool(event.get("ok")),
-            }
-        )
+        record = {
+            "file": name,
+            "round": _round_of(event),
+            "phase": event.get("phase"),
+            "seconds": event.get("seconds"),
+            "exit_code": event.get("exit_code"),
+            "bytes": event.get("bytes"),
+            "truncated": bool(event.get("truncated")),
+            "ok": bool(event.get("ok")),
+            # `seconds` as a fallback for the flag: sessions recorded before the pair
+            # existed emitted one `call_logged`, at the end, without `done`. Reading the
+            # flag alone would show every call in them as still running, for ever.
+            "done": bool(event.get("done") or event.get("seconds") is not None),
+        }
+        calls = self.calls.setdefault(agent, [])
+        for index, existing in enumerate(calls):
+            if existing["file"] == name:
+                calls[index] = record
+                return
+        calls.append(record)
 
     def _on_panelist_dropped(self, event: dict, agent) -> None:
         if not isinstance(agent, str):

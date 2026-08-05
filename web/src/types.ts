@@ -47,6 +47,8 @@ export interface CallRecord {
   bytes: number | null
   truncated: boolean
   ok: boolean
+  /** False while the process is still running — the log exists and is still growing. */
+  done: boolean
 }
 
 export interface Turn {
