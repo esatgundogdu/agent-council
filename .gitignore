@@ -1,9 +1,12 @@
 __pycache__/
 *.py[cod]
+node_modules/
 *.egg-info/
 build/
 dist/
 .pytest_cache/
 .council/
+# the scratch files /council and /consult write in the project root
+.council-*.md
 .DS_Store
 .claude/settings.local.json

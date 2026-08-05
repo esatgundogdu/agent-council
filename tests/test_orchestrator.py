@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from council.adapters.base import Adapter, Reply
+from council.adapters.base import Adapter, Delta, Reply
 from council.config import parse_config
 from council.orchestrator import Council, CouncilError, SessionPaths
 from council.panel import build_panel
@@ -32,7 +32,7 @@ class ScriptedAdapter(Adapter):
         self.sessions_seen = []
         self.session_name = session_name
 
-    async def ask(self, prompt, cwd, timeout, session=None):
+    async def ask(self, prompt, cwd, timeout, session=None, on_delta=None):
         self.prompts.append(prompt)
         self.sessions_seen.append(session)
         i = self.calls
@@ -40,10 +40,20 @@ class ScriptedAdapter(Adapter):
         item = self.script[min(i, len(self.script) - 1)] if self.script else READY_MSG
         if isinstance(item, Reply):
             return item
+        if on_delta is not None:
+            on_delta(Delta(kind="text", text=item))
         return Reply(ok=True, text=item, session_id=self.session_name)
 
 
-def make_council(tmp_path, scripts, task="Add a feature.", **protocol):
+def make_council(
+    tmp_path,
+    scripts,
+    task="Add a feature.",
+    mode="independent",
+    seed="",
+    context="",
+    **protocol,
+):
     names = list(scripts)
     cfg = parse_config(
         {
@@ -55,6 +65,10 @@ def make_council(tmp_path, scripts, task="Add a feature.", **protocol):
     paths = SessionPaths(root=tmp_path / ".council" / "s1")
     paths.prepare()
     paths.task.write_text(task, encoding="utf-8")
+    if seed:
+        paths.seed.write_text(seed, encoding="utf-8")
+    if context:
+        paths.context.write_text(context, encoding="utf-8")
 
     adapters = {}
     by_label = {}
@@ -64,7 +78,12 @@ def make_council(tmp_path, scripts, task="Add a feature.", **protocol):
         by_label[p.label] = adapter
 
     council = Council(
-        config=cfg, panel=panel, paths=paths, project_dir=tmp_path, adapters=adapters
+        config=cfg,
+        panel=panel,
+        paths=paths,
+        project_dir=tmp_path,
+        adapters=adapters,
+        mode=mode,
     )
     return council, by_label
 
@@ -192,9 +211,9 @@ def test_phase1_drop_order_is_panel_order_not_completion_order(tmp_path):
     slow, fast = adapters["Agent-B"], adapters["Agent-C"]
     slow_ask = slow.ask
 
-    async def delayed(prompt, cwd, timeout, session=None):
+    async def delayed(prompt, cwd, timeout, session=None, on_delta=None):
         await asyncio.sleep(0.05)
-        return await slow_ask(prompt, cwd, timeout, session)
+        return await slow_ask(prompt, cwd, timeout, session, on_delta)
 
     slow.ask = delayed
     run(council)
@@ -226,19 +245,45 @@ def test_session_fails_when_panel_falls_below_two(tmp_path):
     assert json.loads(council.paths.status.read_text())["state"] == "failed"
 
 
-def test_turn_failure_is_noted_and_panelist_dropped(tmp_path):
+def test_one_failed_turn_is_noted_but_keeps_the_panelist(tmp_path):
+    """`skip_with_note` means the panelist sits the round out, not the session.
+
+    It used to drop on the first failure, so two unrelated transient timeouts on a
+    three-seat panel lost quorum and ended the run — the outcome the policy exists to
+    avoid, produced by the policy named after avoiding it.
+    """
     council, _ = make_council(
         tmp_path,
         {
-            "a": ["plan a", Reply(ok=False, error="timed out after 300s")],
-            "b": ["plan b", READY_MSG],
-            "c": ["plan c", READY_MSG],
+            "a": ["plan a", Reply(ok=False, error="timed out after 300s"), READY_MSG],
+            "b": ["plan b", READY_MSG, READY_MSG],
+            "c": ["plan c", READY_MSG, READY_MSG],
         },
-        max_rounds=2,
+        max_rounds=3,
     )
     result = run(council)
     assert "timed out after 300s" in council.paths.transcript.read_text()
-    assert len(result.panel) == 2
+    assert len(result.panel) == 3, "one failure must not remove a panelist"
+    assert not result.dropped
+
+
+def test_a_panelist_that_keeps_failing_is_eventually_dropped(tmp_path):
+    from council.orchestrator import CONSECUTIVE_FAILURES_BEFORE_DROP
+
+    dead = Reply(ok=False, error="timed out after 300s")
+    council, _ = make_council(
+        tmp_path,
+        {
+            "a": ["plan a"] + [dead] * (CONSECUTIVE_FAILURES_BEFORE_DROP + 1),
+            "b": ["plan b"] + [CONTINUE_MSG] * CONSECUTIVE_FAILURES_BEFORE_DROP + [READY_MSG],
+            "c": ["plan c"] + [CONTINUE_MSG] * CONSECUTIVE_FAILURES_BEFORE_DROP + [READY_MSG],
+        },
+        max_rounds=CONSECUTIVE_FAILURES_BEFORE_DROP + 1,
+    )
+    result = run(council)
+    assert [label for label, _ in result.dropped] == ["Agent-A"]
+    # …and its position is still in the digest, rather than quietly deleted.
+    assert "Agent-A" in council.paths.digest.read_text(encoding="utf-8")
 
 
 def test_abort_policy_stops_at_the_first_failure(tmp_path):
@@ -307,7 +352,7 @@ def test_turn_events_preserve_the_full_argument_text(tmp_path):
         tmp_path, {"a": ["plan a", CONTINUE_MSG], "b": ["plan b", READY_MSG]}, max_rounds=1
     )
     run(council)
-    turns = [e for e in read_events(council.paths) if e["event"] == "turn"]
+    turns = [e for e in read_events(council.paths) if e["event"] == "turn_end"]
     assert turns, "no turn events recorded"
     for e in turns:
         assert "comment" in e and "reason" in e
@@ -329,7 +374,7 @@ def test_the_lost_transcript_is_reconstructable_from_events_alone(tmp_path):
     recovered = " ".join(
         e.get("comment", "")
         for e in read_events(council.paths)
-        if e["event"] == "turn"
+        if e["event"] == "turn_end"
     )
     assert "distinct point ABC" in recovered
 
@@ -340,7 +385,7 @@ def test_turn_and_plan_events_record_token_cost(tmp_path):
     )
     run(council)
     events = read_events(council.paths)
-    for kind in ("plan_received", "turn"):
+    for kind in ("plan_received", "turn_end"):
         sample = [e for e in events if e["event"] == kind]
         assert sample and all("tokens" in e for e in sample)
         # Mock replies carry no real usage, so the char/4 estimate must fill in.
@@ -355,7 +400,7 @@ def test_real_token_counts_are_preferred_over_the_estimate(tmp_path):
     real = adapters["Agent-A"]
     orig = real.ask
 
-    async def ask(prompt, cwd, timeout, session=None):
+    async def ask(prompt, cwd, timeout, session=None, on_delta=None):
         reply = await orig(prompt, cwd, timeout, session)
         reply.tokens = 9999
         return reply
@@ -526,7 +571,7 @@ def test_a_lost_session_falls_back_to_full_reassembly(tmp_path):
     first_turn = {"done": False}
     orig = a.ask
 
-    async def ask(prompt, cwd, timeout, session=None):
+    async def ask(prompt, cwd, timeout, session=None, on_delta=None):
         # Reject the resumed call once, as an expired session would.
         if session and not first_turn["done"]:
             first_turn["done"] = True
@@ -575,7 +620,10 @@ def test_compaction_never_runs_inside_a_panelists_session(tmp_path):
     )
     run(council)
     kinds = [e["event"] for e in read_events(council.paths)]
-    assert "compacted" in kinds, "compaction did not trigger"
+    # Attempted, not necessarily accepted: this stub answers every call with its
+    # scripted envelope, which the summary check now correctly refuses. What matters
+    # here is which session the attempt used.
+    assert "compaction_start" in kinds, "compaction did not trigger"
     compactor = adapters[council._compaction_panelist().label]
     assert None in compactor.sessions_seen[1:], "compaction reused a debate session"
 
@@ -588,7 +636,7 @@ def test_session_ids_are_recorded_for_future_resume(tmp_path):
     events = read_events(council.paths)
     plans = [e for e in events if e["event"] == "plan_received"]
     assert plans and all(e.get("session") for e in plans)
-    turns = [e for e in events if e["event"] == "turn"]
+    turns = [e for e in events if e["event"] == "turn_end"]
     assert turns and all(e.get("resumed") is True for e in turns)
 
 
@@ -606,7 +654,7 @@ def test_after_a_fallback_the_new_session_is_adopted(tmp_path):
     a = adapters["Agent-A"]
     orig, rejected = a.ask, {"done": False}
 
-    async def ask(prompt, cwd, timeout, session=None):
+    async def ask(prompt, cwd, timeout, session=None, on_delta=None):
         if session and not rejected["done"]:  # kill the first resumed call only
             rejected["done"] = True
             a.prompts.append(prompt)
@@ -622,3 +670,70 @@ def test_after_a_fallback_the_new_session_is_adopted(tmp_path):
     # ...but the session it opened was adopted, so a later turn resumes again.
     assert council.sessions["Agent-A"] == "sess-Agent-A"
     assert a.sessions_seen[-1] == "sess-Agent-A", "run stayed cold after the fallback"
+
+
+def test_a_panelists_binary_reaches_the_adapter_that_runs_it(tmp_path):
+    """The seam that makes `binary` worth having at all.
+
+    council.yaml -> PanelistConfig -> Panelist -> adapter kwargs. Every hop is a place
+    the field can be dropped silently, and a dropped one looks exactly like a harness
+    that is not installed.
+    """
+    from council.adapters import build_adapter
+    from council.config import CouncilConfig, PanelistConfig, ProtocolConfig
+    from council.panel import build_panel
+
+    config = CouncilConfig(
+        panel=[
+            PanelistConfig(name="gpt", adapter="codex_cli", binary="/opt/*/codex"),
+            PanelistConfig(name="plain", adapter="codex_cli"),
+        ],
+        protocol=ProtocolConfig(anonymize=False),
+    )
+    panel = build_panel(config)
+    assert {p.name: p.binary for p in panel} == {"gpt": "/opt/*/codex", "plain": None}
+
+    for panelist in panel:
+        kwargs = {"model": panelist.model, "variant": panelist.variant}
+        if panelist.binary:
+            kwargs["binary"] = panelist.binary
+        adapter = build_adapter(panelist.adapter, **kwargs)
+        # An unset binary must leave the adapter's own default alone, not blank it.
+        expected = panelist.binary or "codex"
+        assert adapter.binary == expected
+
+
+# ---- failures the panel must survive, and lies it must not tell -----------
+
+
+def test_a_bad_summary_is_refused_rather_than_replacing_the_discussion():
+    """Accepting any non-blank reply erased the rounds it claimed to summarise.
+
+    Compaction rewrites what every later prompt says about earlier rounds. A refusal,
+    a stub, or the compactor answering as a panelist all used to qualify — and
+    transcript.md renders every turn regardless, so nothing on disk showed the loss.
+    """
+    from council.orchestrator import _unusable_summary
+
+    assert _unusable_summary("")
+    assert _unusable_summary("I cannot summarise this.")
+    assert _unusable_summary('{"comment": "' + "x" * 300 + '", "verdict": "CONTINUE"}')
+    assert not _unusable_summary(
+        "Rounds 1-2 settled the algorithm: a token bucket, chosen over a fixed window "
+        "because it absorbs bursts. State lives on the handler class so tests can "
+        "replace it. Open: whether Retry-After should round up, and where the limiter "
+        "is constructed. Nobody objected to the 429 contract itself."
+    )
+
+
+def test_one_failed_turn_does_not_remove_a_panelist_for_the_session():
+    """`skip_with_note` promised a panelist "sits the round out"; it dropped it.
+
+    Two unrelated transient failures on a three-seat panel therefore ended the whole
+    session, which is exactly what the policy exists to prevent.
+    """
+    from council.orchestrator import CONSECUTIVE_FAILURES_BEFORE_DROP
+
+    assert CONSECUTIVE_FAILURES_BEFORE_DROP >= 2, (
+        "a single timeout must not be evidence that a model is broken"
+    )

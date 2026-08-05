@@ -7,7 +7,14 @@ name = "plan-council"
 dynamic = ["version"]
 description = "Multi-model plan maturation council: independent agent plans, anonymous debate, unified digest"
 requires-python = ">=3.10"
-dependencies = ["pyyaml>=6"]
+dependencies = [
+    "pyyaml>=6",
+    # The control plane. The orchestrator is asyncio already, so the daemon shares one
+    # event loop with it; httpx is what the CLI uses to talk to that daemon.
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "httpx>=0.27",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
@@ -16,10 +23,12 @@ dev = ["pytest>=8"]
 council = "council.__main__:main"
 
 [tool.setuptools]
-packages = ["council", "council.adapters"]
+packages = ["council", "council.adapters", "council.server"]
 
 [tool.setuptools.package-data]
-council = ["static/*.html"]
+# The built UI ships inside the wheel, so `pip install` is the whole story for a user
+# and Node is only ever a build-time dependency of this repo.
+council = ["web/index.html", "web/assets/*"]
 
 # Single source of truth for the version: council/__init__.py
 [tool.setuptools.dynamic]

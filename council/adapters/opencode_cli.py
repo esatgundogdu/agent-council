@@ -18,7 +18,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from .base import WINDOWS, Adapter, Reply, run_process
+from .base import WINDOWS, Adapter, Delta, LineParser, Reply, run_process
 
 # ARG_MAX is 1 MiB on macOS and covers argv *and* the environment. Beyond this the
 # prompt goes in via `-f`, whose contents opencode inlines into the message.
@@ -37,7 +37,6 @@ ATTACHED_PROMPT_MESSAGE = (
 
 class OpencodeAdapter(Adapter):
     name = "opencode_cli"
-    supports_sessions = True
 
     def __init__(self, model: str | None = None, **kwargs):
         super().__init__(model=model, **kwargs)
@@ -47,8 +46,16 @@ class OpencodeAdapter(Adapter):
         #: Overridable so both delivery paths stay testable on either platform.
         self.argv_prompt_limit = kwargs.get("argv_prompt_limit", ARGV_PROMPT_LIMIT)
 
+    def new_parser(self) -> LineParser:
+        return OpencodeLineParser()
+
     async def ask(
-        self, prompt: str, cwd: str, timeout: int, session: str | None = None
+        self,
+        prompt: str,
+        cwd: str,
+        timeout: int,
+        session: str | None = None,
+        on_delta=None,
     ) -> Reply:
         base = [self.binary, "run", "--agent", self.agent, "--format", "json"]
         if self.model:
@@ -65,7 +72,13 @@ class OpencodeAdapter(Adapter):
             argv = base + self._prompt_args(prompt, Path(tmp))
             # stdin_data stays None on purpose: run_process then wires stdin to
             # /dev/null, which is what stops opencode from hanging.
-            reply = await run_process(argv, cwd=cwd, timeout=timeout, env=env)
+            reply = await run_process(
+                argv,
+                cwd=cwd,
+                timeout=timeout,
+                env=env,
+                on_line=self._line_sink(on_delta),
+            )
         if not reply.ok:
             return reply
 
@@ -95,6 +108,79 @@ class OpencodeAdapter(Adapter):
         prompt_file = tmpdir / "prompt.md"
         prompt_file.write_text(prompt, encoding="utf-8")
         return ["-f", str(prompt_file), "--", ATTACHED_PROMPT_MESSAGE]
+
+
+class OpencodeLineParser(LineParser):
+    """opencode JSONL parts -> deltas.
+
+    Text parts are keyed by id and re-sent in full on every streaming update, so only
+    the growth since the last sighting of that id is emitted.
+    """
+
+    def __init__(self) -> None:
+        self.seen_text: dict[str, int] = {}
+        self.seen_tools: set[str] = set()
+        self.session_sent = False
+
+    def feed(self, line: str) -> list[Delta]:
+        line = line.strip()
+        if not line.startswith("{"):
+            return []
+        try:
+            event = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            return []
+        if not isinstance(event, dict):
+            return []
+
+        out: list[Delta] = []
+        session_id = event.get("sessionID")
+        if not self.session_sent and isinstance(session_id, str) and session_id:
+            self.session_sent = True
+            out.append(Delta(kind="session", session_id=session_id))
+
+        part = event.get("part")
+        if not isinstance(part, dict):
+            return out
+        ptype = part.get("type")
+
+        if ptype == "text":
+            text = part.get("text")
+            if isinstance(text, str) and text:
+                key = str(part.get("id") or "text")
+                already = self.seen_text.get(key, 0)
+                if len(text) > already:
+                    self.seen_text[key] = len(text)
+                    out.append(Delta(kind="text", text=text[already:]))
+        elif ptype == "tool":
+            key = str(part.get("id") or part.get("callID") or "")
+            if key not in self.seen_tools:  # one line per call, not per state change
+                self.seen_tools.add(key)
+                out.append(
+                    Delta(
+                        kind="tool",
+                        tool=str(part.get("tool") or "tool"),
+                        target=_opencode_target(part.get("state")),
+                    )
+                )
+        elif ptype == "step-finish":
+            usage = part.get("tokens")
+            if isinstance(usage, dict) and isinstance(usage.get("total"), int):
+                out.append(Delta(kind="usage", tokens=usage["total"]))
+        return out
+
+
+def _opencode_target(state: object) -> str:
+    if not isinstance(state, dict):
+        return ""
+    payload = state.get("input")
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("filePath", "path", "pattern", "command", "query"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:200]
+    return ""
 
 
 def parse_json_events(stream: str) -> tuple[str, int | None, str | None]:
@@ -142,5 +228,11 @@ def parse_json_events(stream: str) -> tuple[str, int | None, str | None]:
 
     if parts:
         return "\n\n".join(parts[k] for k in order).strip(), tokens, session_id
+    if session_id is not None:
+        # It *was* a JSONL stream, and it contained no assistant text. Returning the
+        # stray non-JSON lines here meant a turn that produced no model output came
+        # back as a successful reply whose opinion was a warning banner — "model fell
+        # back to a cheaper tier" argued its way into the transcript as a panelist.
+        return "", tokens, session_id
     # Not a JSONL stream after all (older opencode, or an error page): use it raw.
     return "\n".join(plain_lines).strip(), tokens, session_id

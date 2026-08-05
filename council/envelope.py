@@ -29,10 +29,6 @@ class Envelope:
     reason: str = ""
     malformed: bool = False
 
-    @property
-    def is_ready(self) -> bool:
-        return self.verdict == READY
-
 
 def _balanced_objects(text: str) -> list[str]:
     """Return every balanced {...} span in `text`, outermost only, in order."""
@@ -66,13 +62,25 @@ def _balanced_objects(text: str) -> list[str]:
 
 
 def _normalise_verdict(value: object) -> str | None:
+    """A verdict field, read strictly in one direction and loosely in the other.
+
+    CONTINUE means "keep arguing" and is the safe answer, so anything containing it
+    counts. READY ends the council, so it must be the whole field and nothing else:
+    a substring test read `"NOT READY"` as consent — the exact opposite of what the
+    panelist wrote — and did not even mark the turn malformed, so the event log and
+    the digest both recorded a blocked panelist as having agreed.
+    """
     if not isinstance(value, str):
         return None
-    token = value.strip().strip(".!").upper()
-    if READY in token and CONTINUE not in token:
-        return READY
+    # `.`, `!` and markdown emphasis are noise around a verdict; `?` is not — it turns
+    # a statement into a question, and a question is not consent.
+    token = value.strip().strip(".!*_ ").upper()
     if CONTINUE in token:
         return CONTINUE
+    if token == READY:
+        return READY
+    # Mentions READY but is not READY — "NOT READY", "READY?", "READY once fixed".
+    # Not a verdict this can honestly read, so it degrades to the malformed path.
     return None
 
 
@@ -89,7 +97,32 @@ def _from_object(obj: dict, fallback_text: str) -> Envelope | None:
     reason = lowered.get("reason")
     if not isinstance(reason, str):
         reason = ""
-    return Envelope(comment=comment.strip(), verdict=verdict, reason=reason.strip())
+    return Envelope(
+        comment=_unescape_newlines(comment).strip(),
+        verdict=verdict,
+        reason=_unescape_newlines(reason).strip(),
+    )
+
+
+def _unescape_newlines(text: str) -> str:
+    r"""Undo a newline the model escaped twice.
+
+    Some models write `\\n` inside the envelope where they mean a line break: the JSON
+    is valid and parses cleanly, and the field then carries the two characters
+    backslash-n, which reach the digest as literal `\n` in the middle of a sentence.
+    Observed consistently from one real model (gpt-5.6-luna, every turn of a session)
+    and never from the other, so it is a habit of particular models rather than a bug
+    on either side worth failing over.
+
+    Only when the field has no real line break: a field that is already laid out in
+    lines is being read literally, and a `\n` inside it is prose about an escape
+    sequence rather than a mistake. That leaves one ambiguous case — a genuinely
+    single-line comment that means to talk about `\n` — which loses out, because it is
+    far rarer than the mangling it costs to keep.
+    """
+    if "\n" in text:
+        return text
+    return text.replace("\\r\\n", "\n").replace("\\n", "\n")
 
 
 def parse_envelope(text: str) -> Envelope:
@@ -122,19 +155,33 @@ def parse_envelope(text: str) -> Envelope:
     )
 
 
-_PROSE_READY = re.compile(
-    r"(?:^|\n)\s*(?:\*\*)?(?:verdict\s*[:=]\s*)?(?:\*\*)?\s*(READY|CONTINUE)\b",
-    re.IGNORECASE,
+#: A whole line that says nothing but the verdict — optionally labelled, optionally
+#: emphasised, optionally punctuated. The trailing `\s*$` is the load-bearing part.
+_PROSE_VERDICT = re.compile(
+    r"^[\s>*_#-]*(?:verdict\s*[:=]\s*)?[\s*_]*(READY|CONTINUE)[\s.!*_]*$",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 
 def _verdict_from_prose(text: str) -> str | None:
     """Last-ditch: a reply that states its verdict in prose rather than JSON.
 
-    Only a verdict on its own line (optionally 'verdict: X') counts, so the words
-    'ready' or 'continue' inside an argument cannot end the debate by accident.
+    The line must consist of the verdict and nothing else. Without the end anchor
+    this matched any line *beginning* with the word, so a panelist writing
+
+        Ready or not, this will lose customer data. We must keep discussing.
+
+    was recorded as READY — and because the scan took the last match, a polite
+    "Ready to discuss further next round." at the foot of a list of blockers ended
+    the council. That is precisely the invention the module docstring forbids, and
+    it fired most often on the commonest model error: a trailing comma, which
+    invalidates an explicit CONTINUE envelope and drops the reply onto this path.
     """
-    matches = _PROSE_READY.findall(text)
+    matches = _PROSE_VERDICT.findall(text)
     if not matches:
         return None
-    return matches[-1].upper()
+    verdicts = {m.upper() for m in matches}
+    # A reply that says both is not stating a verdict; it is discussing them.
+    if len(verdicts) != 1:
+        return CONTINUE
+    return verdicts.pop()

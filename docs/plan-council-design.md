@@ -1,5 +1,12 @@
 # Plan Council — Design Document (V2 — zero-steering revision)
 
+> **ARCHIVED — V2.** Superseded by [web-control-plane-design.md](web-control-plane-design.md).
+>
+> Kept for the reasoning behind the debate protocol itself — phases, anonymity,
+> envelopes, budgets — which is unchanged. Everything else here describes a
+> program that no longer exists: the command names, the directory layout, the
+> "no framework, ~200 lines" architecture and the roadmap are all V2.
+
 > A multi-model plan maturation system: an orchestrator triggered from within Claude Code,
 > where multiple models first **explore the repo themselves** to produce independent plans,
 > then mature the plan by chatting with each other, and decide on maturity themselves.

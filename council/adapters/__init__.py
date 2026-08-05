@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from .base import Adapter, AdapterError, Reply, resolve_binary, run_process
+from .base import (
+    Adapter,
+    AdapterError,
+    Delta,
+    DeltaSink,
+    LineParser,
+    Reply,
+    resolve_binary,
+    run_process,
+)
 from .claude_cli import ClaudeAdapter
 from .codex_cli import CodexAdapter
 from .mock import MockAdapter
@@ -18,6 +27,9 @@ REGISTRY: dict[str, type[Adapter]] = {
 __all__ = [
     "Adapter",
     "AdapterError",
+    "Delta",
+    "DeltaSink",
+    "LineParser",
     "Reply",
     "resolve_binary",
     "run_process",

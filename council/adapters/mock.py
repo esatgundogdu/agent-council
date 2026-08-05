@@ -19,7 +19,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from .base import Adapter, Reply
+from .base import Adapter, Delta, Reply
 
 DEFAULT_PLAN = """## Approach
 
@@ -50,16 +50,23 @@ DEFAULT_TURNS = [
     ' "verdict": "READY", "reason": "All open points resolved."}',
 ]
 
+#: The line every prompt that wants an envelope carries, and no other prompt does.
+#: Which reply to script used to be decided by counting calls — "the first one is the
+#: plan" — which is only true of the modes that open with Phase 1. A consultation has
+#: no Phase 1, so its single call was answered with a plan and every panelist came back
+#: malformed. Reading the contract off the prompt is both simpler and always right.
+ENVELOPE_ASKED_FOR = '"verdict": "CONTINUE or READY"'
+
 
 class MockAdapter(Adapter):
     name = "mock"
-    supports_sessions = True
 
     def __init__(self, model: str | None = None, **kwargs):
         super().__init__(model=model, **kwargs)
         self.panelist_name = kwargs.get("panelist_name", "default")
         self.scenario = _load_scenario(kwargs.get("scenario_path"))
         self._calls = 0
+        self._turns = 0
         #: Session id passed in on each call, for tests to assert continuity.
         self.sessions_seen: list[str | None] = []
 
@@ -68,7 +75,12 @@ class MockAdapter(Adapter):
         return self.scenario.get(self.panelist_name) or self.scenario.get("default", {})
 
     async def ask(
-        self, prompt: str, cwd: str, timeout: int, session: str | None = None
+        self,
+        prompt: str,
+        cwd: str,
+        timeout: int,
+        session: str | None = None,
+        on_delta=None,
     ) -> Reply:
         script = self._script
         self.sessions_seen.append(session)
@@ -76,33 +88,48 @@ class MockAdapter(Adapter):
         if delay:
             await asyncio.sleep(min(delay, timeout))
 
-        is_phase1 = self._calls == 0
+        first_call = self._calls == 0
         self._calls += 1
         session_id = session or f"mock-session-{self.panelist_name}"
         if script.get("no_session"):
             session_id = None  # harness that cannot resume: exercises the fallback
 
-        if is_phase1:
-            if script.get("fail_phase1"):
-                return Reply(ok=False, error="mock: scripted phase-1 failure")
-            plan = script.get("plan", DEFAULT_PLAN)
-            return Reply(
-                ok=True,
-                text=_personalise(plan, self.panelist_name),
-                session_id=session_id,
+        if ENVELOPE_ASKED_FOR in prompt:
+            turn_index = self._turns
+            self._turns += 1
+            if script.get("fail_at_turn") == turn_index:
+                return Reply(ok=False, error="mock: scripted turn failure")
+            turns = script.get("turns") or DEFAULT_TURNS
+            text = _personalise(
+                turns[min(turn_index, len(turns) - 1)], self.panelist_name
             )
+        else:
+            if first_call and script.get("fail_phase1"):
+                return Reply(ok=False, error="mock: scripted phase-1 failure")
+            text = _personalise(script.get("plan", DEFAULT_PLAN), self.panelist_name)
 
-        turn_index = self._calls - 2
-        if script.get("fail_at_turn") == turn_index:
-            return Reply(ok=False, error="mock: scripted turn failure")
+        # Whatever this call is, if it is the first one the panelist is meeting the
+        # repository — so that is when it reads files.
+        await self._stream(text, session_id, first_call, on_delta, script)
+        return Reply(ok=True, text=text, session_id=session_id)
 
-        turns = script.get("turns") or DEFAULT_TURNS
-        text = turns[min(turn_index, len(turns) - 1)]
-        return Reply(
-            ok=True,
-            text=_personalise(text, self.panelist_name),
-            session_id=session_id,
-        )
+    async def _stream(self, text, session_id, is_phase1, on_delta, script) -> None:
+        """Replay the reply as deltas, so the live path is exercised without a model."""
+        if on_delta is None:
+            return
+        if session_id:
+            on_delta(Delta(kind="session", session_id=session_id))
+        pace = float(script.get("stream_delay", 0))
+        if is_phase1:
+            for target in script.get("reads") or ("README.md", "council/panel.py"):
+                on_delta(Delta(kind="tool", tool="read", target=target))
+                if pace:
+                    await asyncio.sleep(pace)
+        for i in range(0, len(text), 80):
+            on_delta(Delta(kind="text", text=text[i : i + 80]))
+            if pace:
+                await asyncio.sleep(pace)
+        on_delta(Delta(kind="usage", tokens=max(1, len(text) // 4)))
 
 
 def _personalise(text: str, name: str) -> str:

@@ -46,23 +46,6 @@ def test_identity_map_is_label_to_real_name():
     assert set(mapping.values()) == {"gpt", "kimi", "glm", "deepseek"}
 
 
-def test_focus_dropped_unless_focus_roles_enabled():
-    cfg = parse_config(
-        {
-            "panel": [
-                {"name": "a", "adapter": "mock", "focus": "security"},
-                {"name": "b", "adapter": "mock"},
-            ]
-        }
-    )
-    assert build_panel(cfg, seed=0)[0].focus is None
-    cfg.protocol.focus_roles = True
-    assert any(p.focus == "security" for p in build_panel(cfg, seed=0))
-
-
-# ---- transcript ---------------------------------------------------------
-
-
 def _turn(round_no, label, verdict=CONTINUE, comment="c"):
     return Turn.from_envelope(
         round_no, label, Envelope(comment=comment, verdict=verdict)

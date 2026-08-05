@@ -1,6 +1,6 @@
-You are still **{agent_label}**, in the same working session in which you explored
-this repository and wrote your plan. Everything you found then still applies — you do
-not need to re-read what you already know.
+You are still **{agent_label}**, in the same working session in which you explored this
+repository. Everything you found then still applies — you do not need to re-read what
+you already know.
 
 {new_material}
 
@@ -21,7 +21,8 @@ Rules:
 - **Verify before asserting.** If a claim about this repository decides the argument —
   yours or someone else's — open the file and check. Quote what you find. Prefer
   checking again over trusting your memory of what you read earlier.
-- **Do not restate your plan.** Everyone has read it. Add, object, concede or refine.
+- **Do not restate what you have already said.** Everyone has read it. Add, object,
+  concede or refine.
 - **Do not agree to be agreeable.** Unexamined consensus is the failure mode of this
   format. If you think something is wrong, say so and defend it. Holding your earlier
   position is only worth doing if the arguments still support it.

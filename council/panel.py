@@ -23,8 +23,9 @@ class Panelist:
     letter: str
     adapter: str
     model: str | None = None
-    focus: str | None = None
     variant: str | None = None
+    #: An explicit path to this panelist's harness, when PATH will not find it.
+    binary: str | None = None
 
     @property
     def label(self) -> str:
@@ -54,9 +55,8 @@ def build_panel(
     The assignment is shuffled so a letter cannot be traced to a model by its
     position in council.yaml. `seed` makes the shuffle deterministic for tests.
     """
-    entries: list[PanelistConfig] = config.enabled_panel
+    entries: list[PanelistConfig] = config.panel
     letters = _letters(len(entries))
-    use_focus = config.protocol.focus_roles
 
     if anonymize is None:
         anonymize = config.protocol.anonymize
@@ -74,8 +74,8 @@ def build_panel(
                 letter=letter,
                 adapter=entry.adapter,
                 model=entry.model,
-                focus=entry.focus if use_focus else None,
                 variant=entry.variant,
+                binary=entry.binary,
             )
         )
     # Speaking order follows the letters (A, B, C, ...), not council.yaml order.

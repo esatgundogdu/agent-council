@@ -20,6 +20,9 @@ def estimate_tokens(text: str) -> int:
     return len(text) // 4
 
 
+CHAIR = "Chair"
+
+
 @dataclass
 class Turn:
     round: int
@@ -30,6 +33,9 @@ class Turn:
     malformed: bool = False
     failed: bool = False
     note: str = ""
+    #: "panelist" or "chair". A chair turn is an intervention from outside the panel —
+    #: it is shown to everyone but never counts towards consensus.
+    kind: str = "panelist"
 
     @classmethod
     def from_envelope(cls, round_no: int, label: str, envelope: Envelope) -> "Turn":
@@ -53,7 +59,26 @@ class Turn:
             note=note,
         )
 
+    @classmethod
+    def chair(cls, round_no: int, text: str, by: str = "user") -> "Turn":
+        return cls(
+            round=round_no,
+            label=CHAIR,
+            comment=text.strip(),
+            verdict=CONTINUE,
+            reason=by,
+            kind="chair",
+        )
+
     def render(self) -> str:
+        if self.kind == "chair":
+            who = "the user" if self.reason == "user" else self.reason or "the chair"
+            return (
+                f"### Chair — round {self.round}\n\n"
+                f"_An instruction from {who}, who convened this council. It is not a "
+                f"panelist's opinion: treat it as a direction for the discussion._\n\n"
+                f"{self.comment.strip()}"
+            )
         if self.failed:
             return f"### {self.label} — round {self.round}\n\n_(no response: {self.note})_"
         head = f"### {self.label} — round {self.round}\n\n{self.comment.strip()}"
@@ -82,7 +107,7 @@ class Transcript:
 
     def last_turn_of(self, label: str) -> Turn | None:
         for turn in reversed(self.turns):
-            if turn.label == label and not turn.failed:
+            if turn.label == label and not turn.failed and turn.kind == "panelist":
                 return turn
         return None
 
@@ -92,7 +117,9 @@ class Transcript:
         A panelist that failed this round has not consented to ending, so a round
         with any failure can never terminate the debate naturally.
         """
-        spoken = {t.label: t for t in self.turns_in_round(round_no)}
+        spoken = {
+            t.label: t for t in self.turns_in_round(round_no) if t.kind == "panelist"
+        }
         if set(spoken) != set(expected_labels):
             return False
         return all(
@@ -102,15 +129,21 @@ class Transcript:
     # ---- prompt assembly -------------------------------------------------
 
     def render_plans(self, reader: Panelist | None = None) -> str:
+        """The plans section of a prompt, heading and all — or nothing.
+
+        Nothing, rather than `_(no plans available)_`: the modes that skip Phase 1 have
+        no plans by design, and a heading followed by an apology invites a panelist to
+        wonder what it is supposed to have missed.
+        """
         if not self.plans:
-            return "_(no plans available)_"
+            return ""
         blocks = []
         for label in sorted(self.plans):
             marker = ""
             if reader is not None and label == reader.label:
                 marker = "  ← THIS IS YOUR PLAN"
             blocks.append(f"## {label}'s plan{marker}\n\n{self.plans[label].strip()}")
-        return "\n\n---\n\n".join(blocks)
+        return "# THE PLANS\n\n" + "\n\n---\n\n".join(blocks) + "\n\n"
 
     def render_conversation(self) -> str:
         """The conversation as panelists see it: summary (if any) + recent rounds raw."""

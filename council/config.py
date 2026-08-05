@@ -21,8 +21,14 @@ class PanelistConfig:
     name: str
     adapter: str
     model: str | None = None
-    focus: str | None = None
     variant: str | None = None
+    #: Where this panelist's harness executable actually is, when a bare name on PATH
+    #: will not find it. The ChatGPT desktop app, for one, installs codex under a
+    #: content-hashed directory that is on nobody's PATH; naming the file here is
+    #: better than a PATH entry, which has to be set before the daemon starts and is
+    #: silently wrong for whoever forgets. Omit it and the adapter's usual name is
+    #: looked up on PATH as before.
+    binary: str | None = None
 
 
 @dataclass
@@ -33,7 +39,6 @@ class ProtocolConfig:
     wall_clock_budget: int = 1800
     compaction_threshold: int = 12_000
     anonymize: bool = True
-    focus_roles: bool = False
     compaction_panelist: str | None = None
     #: Continue each panelist's own harness conversation across rounds, so it keeps
     #: the repo context it built while writing its plan.
@@ -52,10 +57,6 @@ class CouncilConfig:
     protocol: ProtocolConfig = field(default_factory=ProtocolConfig)
     timeouts: TimeoutConfig = field(default_factory=TimeoutConfig)
     on_failure: str = "skip_with_note"
-
-    @property
-    def enabled_panel(self) -> list[PanelistConfig]:
-        return list(self.panel)
 
 
 def _subdict(raw: Any, key: str) -> dict:
@@ -89,7 +90,21 @@ def load_config(path: str | Path) -> CouncilConfig:
     return parse_config(raw)
 
 
+#: Everything council.yaml may say at the top level.
+SECTIONS = {"panel", "protocol", "timeouts", "on_failure"}
+
+
 def parse_config(raw: dict) -> CouncilConfig:
+    # A misspelled section used to be ignored in silence, so every setting inside it
+    # did nothing — the exact failure the strict check on nested keys exists to catch,
+    # one level up where it matters more.
+    unknown = set(raw) - SECTIONS
+    if unknown:
+        raise ConfigError(
+            f"unknown top-level key(s): {', '.join(sorted(unknown))}. "
+            f"Valid: {', '.join(sorted(SECTIONS))}"
+        )
+
     panel_raw = raw.get("panel")
     if not isinstance(panel_raw, list) or not panel_raw:
         raise ConfigError("'panel' must be a non-empty list of panelists")

@@ -203,3 +203,72 @@ def test_a_name_on_path_resolves_to_a_startable_file(tmp_path, monkeypatch):
     )
     assert reply.ok is True
     assert "SHIM OK" in reply.text
+
+
+def test_a_failed_run_still_hands_back_what_it_printed(tmp_path):
+    """A non-zero exit must not throw away stdout.
+
+    Harnesses report their own failures in their own output format — `claude -p`
+    exits 1 for an expired login and still emits a `result` event naming the cause.
+    Without the raw output the adapter has nothing to read, and the user is shown a
+    two-kilobyte tail of JSONL instead of one sentence.
+    """
+    script = tmp_path / "boom.py"
+    script.write_text(
+        'print(\'{"type":"result","is_error":true,"result":"auth failed"}\')\n'
+        "raise SystemExit(1)\n",
+        encoding="utf-8",
+    )
+    reply = asyncio.run(
+        run_process([sys.executable, str(script)], cwd=str(tmp_path), timeout=30)
+    )
+    assert reply.ok is False
+    assert reply.exit_code == 1
+    assert "auth failed" in reply.text
+
+
+def test_a_glob_binary_resolves_to_the_newest_match(tmp_path):
+    """Some harnesses live under a directory whose name changes on every update.
+
+    The ChatGPT desktop app installs codex as `.../Codex/bin/<content-hash>/codex.exe`
+    and mints a new hash each time it updates itself — one rotated mid-session while
+    this was being written. That directory is on no PATH, so it has to be named, and
+    naming it literally produces a config line with an expiry date.
+    """
+    old = tmp_path / "aaa11"
+    new = tmp_path / "bbb22"
+    for directory in (old, new):
+        directory.mkdir()
+        (directory / "harness.exe").write_text("x", encoding="utf-8")
+    os.utime(old / "harness.exe", (1_000_000, 1_000_000))
+    os.utime(new / "harness.exe", (2_000_000, 2_000_000))
+
+    resolved = resolve_binary(str(tmp_path / "*" / "harness.exe"))
+    assert Path(resolved) == new / "harness.exe"
+
+
+def test_a_glob_that_matches_nothing_is_handed_back_for_the_error_message(tmp_path):
+    pattern = str(tmp_path / "*" / "absent.exe")
+    assert resolve_binary(pattern) == pattern
+
+
+def test_a_glob_binary_actually_runs(tmp_path):
+    """End to end: the pattern reaches CreateProcess as a real, startable file.
+
+    Only argv[0] is resolved — a glob anywhere else is an argument, and rewriting a
+    panelist's arguments is not this function's business.
+    """
+    versioned = tmp_path / "hash1"
+    versioned.mkdir()
+    if os.name == "nt":
+        shim = versioned / "probe.cmd"
+        shim.write_text("@echo off\r\necho GLOB OK\r\n", encoding="utf-8")
+    else:
+        shim = versioned / "probe"
+        shim.write_text("#!/bin/sh\necho 'GLOB OK'\n", encoding="utf-8")
+        shim.chmod(shim.stat().st_mode | stat.S_IXUSR)
+
+    reply = asyncio.run(
+        run_process([str(tmp_path / "*" / shim.name)], cwd=str(tmp_path), timeout=30)
+    )
+    assert reply.ok is True and "GLOB OK" in reply.text

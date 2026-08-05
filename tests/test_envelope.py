@@ -1,3 +1,5 @@
+import json
+
 from council.envelope import CONTINUE, READY, parse_envelope
 
 
@@ -100,3 +102,98 @@ def test_json_that_is_not_an_envelope_is_ignored():
     assert env.verdict == CONTINUE
     assert env.malformed
     assert env.comment == text
+
+
+BACKSLASH_N = chr(92) + "n"
+
+
+def test_a_newline_the_model_escaped_twice_becomes_a_newline():
+    r"""One real model writes `\n` where it means a line break, on every turn.
+
+    Observed from gpt-5.6-luna across a whole session while gpt-5.6-sol, on the same
+    panel, wrote real newlines throughout. The JSON is valid either way, so nothing
+    fails — the digest simply carries a literal `\n` in the middle of a sentence, in
+    the one artefact that gets handed to another agent to implement.
+    """
+    envelope = parse_envelope(
+        json.dumps(
+            {
+                "comment": "First point." + BACKSLASH_N * 2 + "Second point.",
+                "verdict": "READY",
+                "reason": "Line one." + BACKSLASH_N + "Line two.",
+            }
+        )
+    )
+    assert envelope.comment == "First point.\n\nSecond point."
+    assert envelope.reason == "Line one.\nLine two."
+    assert BACKSLASH_N not in envelope.comment
+
+
+def test_a_comment_already_in_lines_is_left_exactly_as_written():
+    r"""A field laid out in real lines is read literally, `\n` in its prose included."""
+    text = "Escape a newline as " + BACKSLASH_N + " in JSON.\n\nThat is the rule."
+    envelope = parse_envelope(
+        json.dumps({"comment": text, "verdict": "CONTINUE", "reason": ""})
+    )
+    assert envelope.comment == text
+
+
+# ---- a READY must never be invented ---------------------------------------
+#
+# The module's one safety promise: an unparseable reply is taken at face value as a
+# CONTINUE, never as consent. Every string below broke it, and each is a shape a real
+# model produces. A false READY ends the council and ships the plan.
+
+NOT_CONSENT = [
+    # A blocker whose first words happen to be "Ready or not".
+    "I have three unresolved blockers:\n\n1. The migration drops rows.\n2. No rollback."
+    "\n\nReady or not, this will lose customer data. We must keep discussing.",
+    # A polite sign-off at the foot of a list of objections — the scan took the last
+    # match, so this outvoted everything above it.
+    "The migration is unsafe and there is no backfill test.\n\n"
+    "Ready to discuss further next round.",
+    "Some notes.\nReady-made components are a trap; we must keep debating.",
+    "The migration is unsafe.\nready when you have a rollback plan, not before.",
+    # A trailing comma — the commonest JSON error models make — invalidates an
+    # explicit CONTINUE, dropping the reply onto the prose path.
+    'I object.\n\n{"comment":"Auth is broken","verdict":"CONTINUE",}\n\n'
+    "Ready to discuss further next round.",
+    # Says both words on their own lines: discussing verdicts, not casting one.
+    "The rule is:\n\nREADY\n\nor\n\nCONTINUE\n\nI am not sure which applies yet.",
+]
+
+
+def test_prose_that_merely_contains_ready_is_not_consent():
+    for reply in NOT_CONSENT:
+        envelope = parse_envelope(reply)
+        assert envelope.verdict == CONTINUE, f"invented a READY from: {reply[:60]!r}"
+
+
+def test_a_deliberate_prose_verdict_is_still_honoured():
+    """The escape hatch has to keep working, or a whole panel argues forever."""
+    for reply in (
+        "I am satisfied with the plan.\n\nREADY",
+        "Everything is resolved.\n\nVerdict: READY\n",
+        "No objections left.\n\n**READY**",
+        "Looks good.\n\n> READY",
+    ):
+        assert parse_envelope(reply).verdict == READY, reply
+
+
+def test_a_negated_verdict_field_is_not_consent():
+    """`"verdict": "NOT READY"` read as READY — and was not even flagged malformed."""
+    for value in ("NOT READY", "not-ready", "NOT_READY", "READY?", "READY once fixed"):
+        envelope = parse_envelope(
+            json.dumps({"comment": "blocked on auth", "verdict": value})
+        )
+        assert envelope.verdict == CONTINUE, value
+        assert envelope.malformed, f"{value!r} is not a verdict this can read"
+
+
+def test_an_ordinary_verdict_field_still_parses_cleanly():
+    for value in ("READY", "ready", " Ready. ", "**READY**"):
+        envelope = parse_envelope(json.dumps({"comment": "done", "verdict": value}))
+        assert envelope.verdict == READY and not envelope.malformed, value
+    for value in ("CONTINUE", "continue", "CONTINUE_DISCUSSION"):
+        envelope = parse_envelope(json.dumps({"comment": "no", "verdict": value}))
+        assert envelope.verdict == CONTINUE and not envelope.malformed, value

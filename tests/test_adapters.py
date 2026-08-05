@@ -1,8 +1,13 @@
+import json
 import os
 from pathlib import Path
 
-from council.adapters.claude_cli import parse_claude_json
-from council.adapters.codex_cli import clean_codex_error, parse_codex_usage
+from council.adapters.claude_cli import parse_claude_json, parse_claude_stream
+from council.adapters.codex_cli import (
+    CodexLineParser,
+    clean_codex_error,
+    parse_codex_usage,
+)
 from council.adapters.opencode_cli import (
     ARGV_PROMPT_LIMIT,
     ATTACHED_PROMPT_MESSAGE,
@@ -149,6 +154,84 @@ def test_codex_usage_absent_returns_none():
     assert parse_codex_usage("not json at all") is None
 
 
+# ---- codex live deltas (captured verbatim from codex-cli 0.146.0) --------
+#
+# A real run, trimmed only in the length of the pasted command strings. Keeping the
+# actual events is the point: the vocabulary has changed across codex releases, and a
+# fixture invented from the docs would not have caught that the item's kind is under
+# `type`, not `item_type`.
+
+CODEX_REAL = [
+    '{"type": "thread.started", "thread_id": "019fb886-a753-79a3-866c-7dac17fd8866"}',
+    '{"type": "turn.started"}',
+    '{"type": "item.started", "item": {"id": "item_0", "type": "command_execution",'
+    ' "command": "powershell.exe -Command \'Get-Content README.md\'",'
+    ' "aggregated_output": "", "exit_code": null, "status": "in_progress"}}',
+    '{"type": "item.completed", "item": {"id": "item_0", "type": "command_execution",'
+    ' "command": "powershell.exe -Command \'Get-Content README.md\'",'
+    ' "aggregated_output": "execution error", "exit_code": 1, "status": "completed"}}',
+    '{"type": "item.started", "item": {"id": "item_2", "type": "mcp_tool_call",'
+    ' "server": "node_repl", "tool": "js", "arguments": {"code": "…",'
+    ' "title": "Read README heading"}, "result": null, "status": "in_progress"}}',
+    '{"type": "item.completed", "item": {"id": "item_2", "type": "mcp_tool_call",'
+    ' "server": "node_repl", "tool": "js", "arguments": {"code": "…",'
+    ' "title": "Read README heading"}, "status": "completed"}}',
+    '{"type": "item.completed", "item": {"id": "item_3", "type": "agent_message",'
+    ' "text": "# Plan Council"}}',
+    '{"type": "turn.completed", "usage": {"input_tokens": 92831,'
+    ' "cached_input_tokens": 74496, "cache_write_input_tokens": 0,'
+    ' "output_tokens": 528, "reasoning_output_tokens": 208}}',
+]
+
+
+def _codex_deltas(lines):
+    parser = CodexLineParser()
+    return [d for line in lines for d in parser.feed(line)]
+
+
+def test_codex_stream_yields_session_tools_text_and_usage():
+    deltas = _codex_deltas(CODEX_REAL)
+    kinds = [d.kind for d in deltas]
+    assert kinds == ["session", "tool", "tool", "text", "usage"]
+
+    assert deltas[0].session_id == "019fb886-a753-79a3-866c-7dac17fd8866"
+    assert deltas[3].text == "# Plan Council"
+    assert deltas[4].tokens == 92831 + 528 + 208
+
+
+def test_codex_tool_deltas_name_what_the_panelist_did():
+    tools = [d for d in _codex_deltas(CODEX_REAL) if d.kind == "tool"]
+    assert [t.tool for t in tools] == ["command_execution", "mcp_tool_call"]
+    assert "Get-Content README.md" in tools[0].target
+    # An MCP call's own title beats its server name: it is what a human can read.
+    assert tools[1].target == "Read README heading"
+
+
+def test_codex_emits_one_tool_delta_per_call_not_per_state_change():
+    """`item.started` and `item.completed` describe one action, not two."""
+    started = [line for line in CODEX_REAL if '"item.started"' in line]
+    completed = [line for line in CODEX_REAL if '"item.completed"' in line]
+    assert started and completed  # the fixture really does carry both
+    assert len([d for d in _codex_deltas(CODEX_REAL) if d.kind == "tool"]) == len(started)
+
+
+def test_codex_agent_message_is_not_replayed_when_it_is_resent():
+    """Codex resends an item in full on update; only the growth is a delta."""
+    parser = CodexLineParser()
+    first = '{"type":"item.completed","item":{"id":"m","type":"agent_message","text":"Hello"}}'
+    grown = '{"type":"item.completed","item":{"id":"m","type":"agent_message","text":"Hello there"}}'
+    assert [d.text for d in parser.feed(first)] == ["Hello"]
+    assert [d.text for d in parser.feed(grown)] == [" there"]
+    assert parser.feed(grown) == []
+
+
+def test_codex_line_parser_ignores_what_it_does_not_know():
+    parser = CodexLineParser()
+    assert parser.feed('{"type":"some.future.event","payload":{"a":1}}') == []
+    assert parser.feed("not json") == []
+    assert parser.feed("") == []
+
+
 # ---- claude real token usage (captured from claude 2.1.217) --------------
 
 CLAUDE_JSON = (
@@ -187,6 +270,35 @@ def test_claude_missing_usage_returns_no_tokens():
     assert tokens is None
 
 
+# A real `claude -p --output-format stream-json` failure, trimmed: the CLI exits 1 and
+# still says exactly what went wrong in the terminal `result` event.
+CLAUDE_AUTH_FAILURE = (
+    '{"type":"system","subtype":"status","status":"requesting",'
+    '"session_id":"f3ab6462-73d0-4598-8a33-f93a02a06603"}\n'
+    '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text",'
+    '"text":"Failed to authenticate: OAuth session expired and could not be '
+    'refreshed"}]},"session_id":"f3ab6462-73d0-4598-8a33-f93a02a06603",'
+    '"error":"authentication_failed"}\n'
+    '{"type":"result","subtype":"success","is_error":true,"duration_ms":556,'
+    '"result":"Failed to authenticate: OAuth session expired and could not be '
+    'refreshed","session_id":"f3ab6462-73d0-4598-8a33-f93a02a06603"}\n'
+)
+
+
+def test_claude_failure_is_read_out_of_the_stream_not_the_exit_code():
+    """A failed run says why in one sentence, not two kilobytes of JSONL tail.
+
+    `claude -p` exits non-zero for an expired login, so `run_process` alone reports
+    "exit code 1: <tail of stdout>" — which for a stream-json run is a fragment of the
+    last event. The stream itself carries the reason, so it is parsed either way.
+    """
+    text, _tokens, error, session_id = parse_claude_stream(CLAUDE_AUTH_FAILURE)
+    assert text == ""
+    assert error and "OAuth session expired" in error
+    assert "{" not in error  # no raw JSON leaked into the message
+    assert session_id == "f3ab6462-73d0-4598-8a33-f93a02a06603"
+
+
 # ---- codex failure messages ---------------------------------------------
 
 
@@ -210,3 +322,68 @@ def test_codex_error_without_json_is_left_alone():
     assert clean_codex_error("exit code 2: command not found") == (
         "exit code 2: command not found"
     )
+
+
+# ---- a harness must not put words in a panelist's mouth --------------------
+
+
+def test_a_codex_event_carrying_both_an_item_and_usage_keeps_its_text():
+    """Returning on the usage block dropped the message it arrived with."""
+    deltas = CodexLineParser().feed(
+        json.dumps(
+            {
+                "type": "item.completed",
+                "item": {"id": "m1", "item_type": "agent_message",
+                         "text": "Here is my whole reply."},
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+        )
+    )
+    kinds = {d.kind: d for d in deltas}
+    assert "text" in kinds and kinds["text"].text == "Here is my whole reply."
+    assert kinds["usage"].tokens == 15
+
+
+def test_codex_usage_counts_only_completed_turns():
+    """It summed every event that mentioned usage, over-counting several times over.
+
+    An inflated count spends `token_budget` early and ends the council on a limit it
+    never actually reached.
+    """
+    stream = "\n".join(
+        [
+            '{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":20}}',
+            '{"type":"item.completed","usage":{"input_tokens":100,"output_tokens":20}}',
+            '{"type":"session.summary","usage":{"input_tokens":100,"output_tokens":20}}',
+        ]
+    )
+    assert parse_codex_usage(stream) == 120
+
+
+def test_a_codex_usage_field_of_the_wrong_type_costs_only_the_count():
+    """It raised out of the adapter and took the whole session with it."""
+    stream = '{"type":"turn.completed","usage":{"input_tokens":"12","output_tokens":3}}'
+    assert parse_codex_usage(stream) == 3
+    assert parse_codex_usage('["usage", 1]') is None
+
+
+def test_opencode_does_not_return_a_warning_banner_as_the_reply():
+    """A turn with no model output came back as a successful reply saying this."""
+    text, _tokens, session = parse_json_events(
+        "opencode: warning, model fell back to a cheaper tier\n"
+        '{"sessionID":"s","part":{"type":"tool","id":"t1","tool":"read"}}'
+    )
+    assert text == "", "a warning line is not a panelist's argument"
+    assert session == "s"
+
+
+def test_a_truncated_claude_stream_is_an_error_not_an_answer():
+    """The raw JSONL used to become the panelist's argument, ok and unflagged."""
+    raw = (
+        '{"type":"assistant","session_id":"s1",'
+        '"message":{"content":[{"type":"text","text":"x"}]}}\n'
+        '{"type":"assis'
+    )
+    text, _tokens, error, session = parse_claude_stream(raw)
+    assert text == "" and error and "mid-stream" in error
+    assert session == "s1"

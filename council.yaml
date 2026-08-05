@@ -5,23 +5,32 @@
 
 panel:
   # Two ChatGPT models and two Claude models: a full panel on the two subscriptions
-  # that are active here. Model names are verified against these CLIs — `codex`
-  # rejects most ids on a ChatGPT account (gpt-5.2-codex and gpt-5.6 are not
-  # supported), so check with a trivial call before swapping one in.
+  # that are active here. `council models` lists what each CLI actually offers right
+  # now — for codex that is its own catalogue, so prefer copying a name from there
+  # over typing one from memory.
+  # `binary` is here because the ChatGPT desktop app does not put codex on PATH: it
+  # installs it under a content-hashed directory nobody's PATH knows about. The `*` is
+  # not laziness — the app mints a new hash on every update (one rotated under us while
+  # this was being written), so a literal path is a config line with an expiry date.
+  # The newest match wins. Delete these lines if your codex is on PATH (`npm i -g`,
+  # Homebrew); `council models` says which binary it actually found.
   - name: gpt
     adapter: codex_cli
+    binary: C:\Users\PC_4415\AppData\Local\OpenAI\Codex\bin\*\codex.exe
     # model:                  # omit to use the default from ~/.codex/config.toml
 
-  - name: gpt-5-5
+  - name: gpt-alt
     adapter: codex_cli
-    model: gpt-5.5
+    binary: C:\Users\PC_4415\AppData\Local\OpenAI\Codex\bin\*\codex.exe
+    model: gpt-5.5           # a second, different ChatGPT model to argue with the first
 
   # These two spend the same subscription quota as the Claude Code session that
   # launched the council.
   - name: claude
     adapter: claude_cli
-    model: opus            # alias (opus/sonnet/haiku/fable) or a full id
-                           # like claude-opus-4-8; omit for the CLI default
+    # A family alias always means the newest model in that family, so it never needs
+    # updating. Pin one (claude-opus-5) only when you deliberately want that version.
+    model: opus
 
   - name: claude-sonnet
     adapter: claude_cli
@@ -56,8 +65,7 @@ protocol:
   # every plan, and the last two rounds verbatim.
   compaction_threshold: 200000
 
-  anonymize: true
-  focus_roles: false     # V1: every panelist gets a byte-identical prompt
+  anonymize: true        # panelists argue as Agent-A, Agent-B — never by brand
 
   # Each panelist keeps talking in the same harness conversation where it explored
   # the repo and wrote its plan, so it does not lose that context between rounds and

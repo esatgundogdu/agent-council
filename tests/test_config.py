@@ -92,3 +92,25 @@ def test_shipped_council_yaml_is_valid():
 def test_missing_file():
     with pytest.raises(ConfigError, match="not found"):
         load_config("/nonexistent/council.yaml")
+
+
+def test_a_panelist_can_name_its_own_harness_binary(tmp_path):
+    """Not every harness is on PATH, and some cannot be put there.
+
+    The ChatGPT desktop app installs codex under a content-hashed directory that no
+    PATH knows about and that changes on every update, so the panelist has to be able
+    to say where its harness is — as a glob, since the hash is not stable.
+    """
+    path = tmp_path / "council.yaml"
+    path.write_text(
+        "panel:\n"
+        "  - name: gpt\n"
+        "    adapter: codex_cli\n"
+        "    binary: /opt/Codex/bin/*/codex\n"
+        "  - name: claude\n"
+        "    adapter: claude_cli\n",
+        encoding="utf-8",
+    )
+    panel = load_config(path).panel
+    assert panel[0].binary == "/opt/Codex/bin/*/codex"
+    assert panel[1].binary is None  # absent means "the usual name, on PATH"
