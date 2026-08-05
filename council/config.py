@@ -15,6 +15,17 @@ class ConfigError(Exception):
 
 KNOWN_ADAPTERS = {"codex_cli", "opencode_cli", "claude_cli", "mock"}
 
+#: How hard a panelist is told to think. codex and the claude CLI turn out to accept
+#: exactly the same five words — verified against both installed binaries, which answer
+#: 400 for anything else (`minimal` included) rather than quietly falling back — so this
+#: is one vocabulary rather than a translation table.
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+#: Harnesses that can be told. `opencode` has no such control, and accepting the setting
+#: for it would mean writing a number in a config file that changes nothing. `mock` is
+#: here so a scripted rehearsal exercises the same path a real panel does.
+EFFORT_ADAPTERS = {"codex_cli", "claude_cli", "mock"}
+
 
 @dataclass
 class PanelistConfig:
@@ -22,6 +33,11 @@ class PanelistConfig:
     adapter: str
     model: str | None = None
     variant: str | None = None
+    #: `low`…`max`, or None for whatever the harness defaults to. Worth setting per
+    #: panelist rather than per council: a panel where one member thinks hard and
+    #: another answers cheaply is a different instrument from one where all four do
+    #: the same thing.
+    effort: str | None = None
     #: Where this panelist's harness executable actually is, when a bare name on PATH
     #: will not find it. The ChatGPT desktop app, for one, installs codex under a
     #: content-hashed directory that is on nobody's PATH; naming the file here is
@@ -57,6 +73,27 @@ class CouncilConfig:
     protocol: ProtocolConfig = field(default_factory=ProtocolConfig)
     timeouts: TimeoutConfig = field(default_factory=TimeoutConfig)
     on_failure: str = "skip_with_note"
+
+
+def check_effort(value: object, adapter: str, who: str) -> None:
+    """Refuse an effort the harness would not honour, and say which it is.
+
+    Both failures are silent otherwise: an unknown level reaches the provider and comes
+    back a 400 after the session has started, and an effort on a harness with no such
+    control is a line in a config file that does nothing at all. Raises `ConfigError`,
+    which every caller already turns into a message rather than a traceback.
+    """
+    if value is None:
+        return
+    if not isinstance(value, str) or value.lower() not in EFFORT_LEVELS:
+        raise ConfigError(
+            f"{who}: effort must be one of {', '.join(EFFORT_LEVELS)}, got {value!r}"
+        )
+    if adapter not in EFFORT_ADAPTERS:
+        raise ConfigError(
+            f"{who}: the '{adapter}' harness has no reasoning-effort control, so "
+            "'effort' would do nothing. Remove it."
+        )
 
 
 def _subdict(raw: Any, key: str) -> dict:
@@ -125,6 +162,7 @@ def parse_config(raw: dict) -> CouncilConfig:
                 f"panel entry '{entry['name']}' has unknown adapter "
                 f"'{entry['adapter']}'. Known: {', '.join(sorted(KNOWN_ADAPTERS))}"
             )
+        check_effort(entry.get("effort"), entry["adapter"], f"panel entry '{entry['name']}'")
         panel.append(_build(PanelistConfig, entry, f"panel[{i}]"))
 
     if len(panel) < 2:

@@ -50,6 +50,9 @@ export function Roster({
                 <span className="real">
                   {member.name}
                   {member.model ? ` · ${member.model}` : ''}
+                  {/* Only when it was set: "effort: default" on every row would be
+                      noise, and the absence already means the harness default. */}
+                  {member.effort ? ` · ${member.effort} effort` : ''}
                 </span>
               )}
             </div>

@@ -14,15 +14,23 @@ panel:
   # this was being written), so a literal path is a config line with an expiry date.
   # The newest match wins. Delete these lines if your codex is on PATH (`npm i -g`,
   # Homebrew); `council models` says which binary it actually found.
+  # `effort` is how hard a panelist is told to think: low, medium, high, xhigh, max.
+  # codex and the claude CLI take the same five words; opencode has no such control and
+  # setting it there is refused rather than ignored. Omit it to leave the harness on its
+  # own default — for codex that is `model_reasoning_effort` in ~/.codex/config.toml,
+  # which is global and applies to every codex panelist at once. Setting it here instead
+  # makes it a property of this council, and lets one panelist think harder than another.
   - name: gpt
     adapter: codex_cli
     binary: C:\Users\PC_4415\AppData\Local\OpenAI\Codex\bin\*\codex.exe
+    effort: high
     # model:                  # omit to use the default from ~/.codex/config.toml
 
   - name: gpt-alt
     adapter: codex_cli
     binary: C:\Users\PC_4415\AppData\Local\OpenAI\Codex\bin\*\codex.exe
     model: gpt-5.5           # a second, different ChatGPT model to argue with the first
+    effort: high
 
   # These two spend the same subscription quota as the Claude Code session that
   # launched the council.
@@ -31,10 +39,12 @@ panel:
     # A family alias always means the newest model in that family, so it never needs
     # updating. Pin one (claude-opus-5) only when you deliberately want that version.
     model: opus
+    effort: high
 
   - name: claude-sonnet
     adapter: claude_cli
     model: sonnet
+    effort: high
 
   # Ollama Cloud panelists — re-enable when that subscription is active. Anything
   # beyond the free tier answers 403 without one.

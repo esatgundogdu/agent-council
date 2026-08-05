@@ -30,6 +30,7 @@ from ..config import (
     PanelistConfig,
     ProtocolConfig,
     TimeoutConfig,
+    check_effort,
     load_config,
 )
 from ..control import Controller
@@ -553,7 +554,13 @@ def default_panel(config_path: str | Path | None = None) -> list[dict]:
     their repository. This is what it means, in the same shape the form edits.
     """
     return [
-        {"name": p.name, "adapter": p.adapter, "model": p.model, "binary": p.binary}
+        {
+            "name": p.name,
+            "adapter": p.adapter,
+            "model": p.model,
+            "effort": p.effort,
+            "binary": p.binary,
+        }
         for p in _defaults(config_path).panel
     ]
 
@@ -612,12 +619,18 @@ def _panel(payload: dict, defaults: CouncilConfig) -> list[PanelistConfig]:
             adapter = entry.get("adapter")
             if not name or not adapter:
                 raise RegistryError(f"panel[{i}] needs both 'name' and 'adapter'")
+            effort = entry.get("effort") or None
+            try:
+                check_effort(effort, str(adapter), f"panel[{i}]")
+            except ConfigError as exc:
+                raise RegistryError(str(exc)) from exc
             panel.append(
                 PanelistConfig(
                     name=str(name),
                     adapter=str(adapter),
                     model=entry.get("model") or None,
                     variant=entry.get("variant") or None,
+                    effort=effort,
                     binary=entry.get("binary") or None,
                 )
             )

@@ -97,9 +97,18 @@ class Adapter:
 
     name = "base"
 
-    def __init__(self, model: str | None = None, variant: str | None = None, **kwargs):
+    def __init__(
+        self,
+        model: str | None = None,
+        variant: str | None = None,
+        effort: str | None = None,
+        **kwargs,
+    ):
         self.model = model
         self.variant = variant
+        #: `low`…`max`, or None to leave the harness on its own default. Only the
+        #: harnesses that have such a control read it; see `config.EFFORT_ADAPTERS`.
+        self.effort = effort
 
 
     def new_parser(self) -> LineParser:

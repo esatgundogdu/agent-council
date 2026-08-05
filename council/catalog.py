@@ -28,7 +28,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from .adapters.base import resolve_binary
-from .config import PanelistConfig
+from .config import EFFORT_ADAPTERS, EFFORT_LEVELS, PanelistConfig
 
 CODEX_CONFIG = Path.home() / ".codex" / "config.toml"
 
@@ -293,13 +293,33 @@ def resolve_spec(
     return _resolve_opencode(raw, catalog)
 
 
+def split_effort(spec: str) -> tuple[str, str | None]:
+    """Peel a trailing `@effort` off one agent spec.
+
+    `@` rather than `:` because a model id may contain a colon — opencode lists
+    `gpt-oss:20b` — and a separator that appears inside the thing it separates is a bug
+    waiting for the right catalogue.
+    """
+    head, sep, tail = spec.rpartition("@")
+    if not sep:
+        return spec.strip(), None
+    effort = tail.strip().lower()
+    if effort not in EFFORT_LEVELS:
+        raise CatalogError(
+            f"'{tail.strip()}' is not an effort level. After '@' use one of: "
+            f"{', '.join(EFFORT_LEVELS)}."
+        )
+    return head.strip(), effort
+
+
 def resolve_agents(
     specs: list[str],
     models: tuple[str, ...] | None = None,
     codex_slugs: tuple[str, ...] | None = None,
 ) -> list[PanelistConfig]:
     """Resolve a full `--agents` list into panelists with unique names."""
-    choices = [resolve_spec(s, models, codex_slugs) for s in specs if s.strip()]
+    pairs = [split_effort(s) for s in specs if s.strip()]
+    choices = [(resolve_spec(s, models, codex_slugs), effort) for s, effort in pairs]
     if len(choices) < 2:
         raise CatalogError(
             f"a council needs at least 2 panelists, got {len(choices)}. "
@@ -308,11 +328,18 @@ def resolve_agents(
 
     seen: dict[str, int] = {}
     panel: list[PanelistConfig] = []
-    for choice in choices:
+    for choice, effort in choices:
         seen[choice.name] = seen.get(choice.name, 0) + 1
         name = choice.name if seen[choice.name] == 1 else f"{choice.name}-{seen[choice.name]}"
+        if effort and choice.adapter not in EFFORT_ADAPTERS:
+            raise CatalogError(
+                f"'{name}' runs through {choice.adapter}, which has no reasoning-effort "
+                "control — drop the '@' from that agent."
+            )
         panel.append(
-            PanelistConfig(name=name, adapter=choice.adapter, model=choice.model)
+            PanelistConfig(
+                name=name, adapter=choice.adapter, model=choice.model, effort=effort
+            )
         )
     return panel
 
@@ -461,7 +488,13 @@ def describe_catalog(binaries: dict[str, str] | None = None) -> str:
 
     lines += [
         "",
-        "Example:",
+        "Add '@level' to say how hard one should think — "
+        + ", ".join(EFFORT_LEVELS)
+        + ".",
+        "codex and claude take it; opencode has no such control.",
+        "",
+        "Examples:",
         "  council start --task task.md --agents 'gpt, glm-5.2, kimi k2.6, claude opus'",
+        "  council start --task task.md --agents 'gpt@max, claude opus@max, gpt-5.5@low'",
     ]
     return "\n".join(lines)

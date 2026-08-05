@@ -113,6 +113,19 @@ If the user asks *who* is on the panel, or asks to change it without naming mode
 `council models` and show them the options grouped by provider, then ask. Do not guess a
 panel on their behalf. With no flag, the panel in `council.yaml` is used.
 
+**How hard each one thinks** is `@level` on its agent spec — `low`, `medium`, `high`,
+`xhigh`, `max`:
+
+```
+--agents "gpt@max, claude opus@max, gpt-5.5@low"
+```
+
+codex and claude take it; opencode has no such control and `@` on one is refused. Omit it
+and each harness keeps its own default. This is worth reaching for when the user asks for
+depth or for speed — `max` on a hard architectural question, `low` when they want a quick
+sanity check — and worth mentioning in your first message, because the gap between `low`
+and `max` on the same panel is an order of magnitude of tokens and minutes.
+
 ### 7. Convene
 
 ```

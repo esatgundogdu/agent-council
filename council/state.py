@@ -136,6 +136,7 @@ class Reducer:
         self.meta: dict = {}
         self.identities: dict[str, str] = {}
         self.models: dict[str, str] = {}
+        self.efforts: dict[str, str] = {}
         self.adapters: dict[str, str] = {}
         self.order: list[str] = []
         self.plans: dict[str, dict] = {}
@@ -185,6 +186,8 @@ class Reducer:
             self.order.append(label)
             if entry.get("model"):
                 self.models[label] = str(entry["model"])
+            if entry.get("effort"):
+                self.efforts[label] = str(entry["effort"])
             if entry.get("adapter"):
                 self.adapters[label] = str(entry["adapter"])
 
@@ -486,6 +489,7 @@ class Reducer:
                     "name": self.identities.get(label),
                     "model": self.models.get(label),
                     "adapter": self.adapters.get(label),
+                    "effort": self.efforts.get(label),
                     "dropped": label in self.dropped,
                     "drop_reason": self.dropped.get(label),
                     "verdict": turn.get("verdict") if turn else None,

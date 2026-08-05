@@ -279,9 +279,38 @@ Each entry resolves on its own:
 | `claude opus` | the family alias, which always means the current Opus |
 | `claude opus 5` | `claude --model claude-opus-5` |
 | `kimi k2.6`, `glm-5.2` | matched against `opencode models` |
+| `gpt@max`, `claude opus@low` | the same, with how hard it should think |
 
 Prefer the bare family alias over a pinned version: `claude opus` keeps meaning the
 newest Opus, while `claude opus 5` will still mean Opus 5 a year from now.
+
+### How hard each panelist thinks
+
+`effort` — `low`, `medium`, `high`, `xhigh`, `max` — per panelist, in `council.yaml` or
+as `@level` on an `--agents` entry:
+
+```yaml
+panel:
+  - name: gpt
+    adapter: codex_cli
+    effort: max
+  - name: claude-sonnet
+    adapter: claude_cli
+    model: sonnet
+    effort: low        # a cheap dissenter against three deep thinkers
+```
+
+codex and the claude CLI happen to accept exactly the same five words, so this is one
+setting rather than two; `opencode` has no such control and setting it there is an error
+rather than a line that does nothing. Omit it and each harness keeps its own default —
+for codex that is `model_reasoning_effort` in `~/.codex/config.toml`, which applies
+globally to every codex panelist at once and is invisible from this repository. Setting
+it here makes it a property of the council instead.
+
+It is not a small dial. The same two-panelist consultation on this repository took **28
+seconds and 114k tokens** at `low`, and **3m 40s and 1.3M tokens** at the codex config's
+`high`. `events.jsonl` records the effort next to the model, so a run's cost can be
+explained afterwards.
 
 An ambiguous or unknown name is an error rather than a guess, and it tells you what the
 harness really offers — `gpt-5.6` lists the three models that start that way.

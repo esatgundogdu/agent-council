@@ -49,6 +49,8 @@ class ClaudeAdapter(Adapter):
         ]
         if self.model:
             argv += ["--model", self.model]
+        if self.effort:
+            argv += ["--effort", self.effort]
         if session:
             argv += ["--resume", session]
 

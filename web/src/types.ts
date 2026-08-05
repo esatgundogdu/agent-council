@@ -11,6 +11,8 @@ export interface Panelist {
   name: string | null
   model: string | null
   adapter: string | null
+  /** How hard it was told to think, or null for the harness default. */
+  effort: string | null
   dropped: boolean
   drop_reason: string | null
   verdict: string | null
@@ -135,10 +137,14 @@ export interface Harness {
   enumerable: boolean
 }
 
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
 export interface PanelMember {
   name: string
   adapter: string
   model: string | null
+  /** How hard to think. null leaves the harness on its own default. */
+  effort?: Effort | null
   /** An explicit path or glob, when this harness is not on PATH. */
   binary?: string | null
 }

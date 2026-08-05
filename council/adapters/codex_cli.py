@@ -56,6 +56,12 @@ class CodexAdapter(Adapter):
             ]
             if self.model:
                 argv += ["-m", self.model]
+            if self.effort:
+                # codex has no `--effort`; it takes the same setting as a config
+                # override, which is also how it reads `~/.codex/config.toml`. Passing
+                # it here means a panelist's effort is a property of this council rather
+                # than of whatever that file happens to say this week.
+                argv += ["-c", f"model_reasoning_effort={self.effort}"]
             if session:
                 argv += ["resume", session, "-"]
             else:

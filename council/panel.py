@@ -24,6 +24,9 @@ class Panelist:
     adapter: str
     model: str | None = None
     variant: str | None = None
+    #: How hard this panelist is told to think — `low`…`max`, or None for the harness
+    #: default. See `config.EFFORT_LEVELS`.
+    effort: str | None = None
     #: An explicit path to this panelist's harness, when PATH will not find it.
     binary: str | None = None
 
@@ -75,6 +78,7 @@ def build_panel(
                 adapter=entry.adapter,
                 model=entry.model,
                 variant=entry.variant,
+                effort=entry.effort,
                 binary=entry.binary,
             )
         )

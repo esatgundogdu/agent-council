@@ -8,7 +8,14 @@ interface Member {
   name: string
   adapter: string
   model: string
+  /** '' means "leave the harness on its own default". */
+  effort: string
 }
+
+//: Both codex and the claude CLI accept exactly these five and reject anything else,
+//: so one list covers the panel. opencode has no such control.
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+const EFFORT_ADAPTERS = new Set(['codex_cli', 'claude_cli', 'mock'])
 
 const MODE_COPY: Record<Mode, { title: string; blurb: string; warn?: string }> = {
   consult: {
@@ -90,7 +97,12 @@ export function NewCouncil({ onStarted }: { onStarted: (id: string) => void }) {
   const panel: PanelMember[] = mockPanel
     ? []
     : members
-      ? members.map((m) => ({ name: m.name, adapter: m.adapter, model: m.model || null }))
+      ? members.map((m) => ({
+          name: m.name,
+          adapter: m.adapter,
+          model: m.model || null,
+          effort: (m.effort || null) as PanelMember['effort'],
+        }))
       : (defaults?.panel ?? [])
 
   //: Harnesses this council must find on PATH. One that names its own binary is
@@ -128,6 +140,7 @@ export function NewCouncil({ onStarted }: { onStarted: (id: string) => void }) {
         name: m.name.trim(),
         adapter: m.adapter,
         model: m.model.trim() || null,
+        effort: m.effort || null,
       }))
     }
     // Only when edited: otherwise council.yaml stays the single owner of these, and
@@ -411,6 +424,27 @@ function PanelEditor({
             value={member.model}
             onChange={(model) => set(i, { model })}
           />
+          {/* Disabled rather than hidden for a harness that cannot think harder: a
+              control that vanishes reads as a bug, one that is greyed out explains
+              itself. */}
+          <select
+            style={{ width: '7.5rem', flex: 'none' }}
+            value={member.effort}
+            disabled={!EFFORT_ADAPTERS.has(member.adapter)}
+            title={
+              EFFORT_ADAPTERS.has(member.adapter)
+                ? 'How hard this panelist is told to think'
+                : 'This harness has no reasoning-effort control'
+            }
+            onChange={(e) => set(i, { effort: e.target.value })}
+          >
+            <option value="">effort: default</option>
+            {EFFORTS.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
           <button
             className="ghost"
             disabled={members.length <= 2}
@@ -426,7 +460,12 @@ function PanelEditor({
         onClick={() =>
           onChange([
             ...members,
-            { name: `panelist-${members.length + 1}`, adapter: 'codex_cli', model: '' },
+            {
+              name: `panelist-${members.length + 1}`,
+              adapter: 'codex_cli',
+              model: '',
+              effort: '',
+            },
           ])
         }
       >
@@ -550,7 +589,14 @@ function describePanel(
     const label = harness ? harness.label.split('—')[0].trim() : adapter
     return count > 1 ? `${count} × ${label}` : label
   })
-  return `${panel.length} panelists — ${parts.join(', ')}`
+  // Worth surfacing without opening the editor: a panelist dialled to `max` costs
+  // noticeably more than the same panelist on its default, and nothing else on screen
+  // would say so.
+  const tuned = panel.filter((m) => m.effort)
+  const effort = tuned.length
+    ? ` · effort set on ${tuned.length} of ${panel.length}`
+    : ''
+  return `${panel.length} panelists — ${parts.join(', ')}${effort}`
 }
 
 function describeContext(context: string, mode: Mode): string {
@@ -600,11 +646,12 @@ function toMembers(panel: PanelMember[]): Member[] {
     name: p.name,
     adapter: p.adapter,
     model: p.model ?? '',
+    effort: p.effort ?? '',
   }))
   return members.length >= 2
     ? members
     : [
-        { name: 'gpt', adapter: 'codex_cli', model: '' },
-        { name: 'claude', adapter: 'claude_cli', model: 'opus' },
+        { name: 'gpt', adapter: 'codex_cli', model: '', effort: '' },
+        { name: 'claude', adapter: 'claude_cli', model: 'opus', effort: '' },
       ]
 }

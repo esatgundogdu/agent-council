@@ -263,7 +263,7 @@ class Council:
     def _build_adapters(self) -> dict[str, Adapter]:
         adapters: dict[str, Adapter] = {}
         for p in self.panel:
-            kwargs: dict = {"model": p.model, "variant": p.variant}
+            kwargs: dict = {"model": p.model, "variant": p.variant, "effort": p.effort}
             # Only when set: every adapter defaults its own binary name, and passing
             # None would override that default with nothing.
             if p.binary:
@@ -454,7 +454,18 @@ class Council:
             started_at=datetime.now(timezone.utc).isoformat(),
             identities=identity_map(self.panel),
             panel=[
-                {"label": p.label, "name": p.name, "model": p.model, "adapter": p.adapter}
+                # `effort` belongs here with the model: it is the other half of what was
+                # actually run, and the difference between `low` and `max` on the same
+                # panel is an order of magnitude of tokens. A log that records which
+                # model answered but not how hard it was told to think cannot explain
+                # why two runs of the same council cost what they did.
+                {
+                    "label": p.label,
+                    "name": p.name,
+                    "model": p.model,
+                    "adapter": p.adapter,
+                    "effort": p.effort,
+                }
                 for p in self.panel
             ],
             protocol=vars(self.config.protocol),
