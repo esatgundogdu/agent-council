@@ -188,6 +188,7 @@ export function NewCouncil({ onStarted }: { onStarted: (id: string) => void }) {
           />
           {projects.length > 0 && (
             <select
+              aria-label="Pick a repository already registered with the daemon"
               style={{ width: '13rem', flex: 'none' }}
               value=""
               onChange={(e) => e.target.value && setProjectDir(e.target.value)}
@@ -402,6 +403,7 @@ function PanelEditor({
       {members.map((member, i) => (
         <div className="row" key={i}>
           <select
+            aria-label={`Harness for panelist ${i + 1}`}
             style={{ width: '12rem', flex: 'none' }}
             value={member.adapter}
             onChange={(e) => set(i, { adapter: e.target.value })}
@@ -428,6 +430,7 @@ function PanelEditor({
               control that vanishes reads as a bug, one that is greyed out explains
               itself. */}
           <select
+            aria-label={`How hard panelist ${i + 1} should think`}
             style={{ width: '7.5rem', flex: 'none' }}
             value={member.effort}
             disabled={!EFFORT_ADAPTERS.has(member.adapter)}
@@ -449,6 +452,7 @@ function PanelEditor({
             className="ghost"
             disabled={members.length <= 2}
             title={members.length <= 2 ? 'A council needs at least two' : 'Remove'}
+            aria-label={`Remove panelist ${i + 1}`}
             onClick={() => onChange(members.filter((_, n) => n !== i))}
           >
             ✕

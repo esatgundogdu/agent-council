@@ -39,15 +39,43 @@ export function Inspector({
   const panel = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Focus moves in so Escape and the tab order belong to the drawer; the seat that
-    // opened it takes focus back on close, which the browser does for us because it
-    // is still the previously focused element.
+    // Focus in, focus held, focus put back where it came from.
+    //
+    // Browsers do not restore focus to a previously focused element — when the focused
+    // node goes away, focus falls to <body>. A keyboard user closing this drawer was
+    // dropped at the top of the document and had to tab through the whole sidebar and
+    // header to reach the seat they had just opened. And with nothing holding the tab
+    // order, tabbing past the last control walked into the page behind, which
+    // `aria-modal` has already told assistive technology is not there.
+    const opener = document.activeElement as HTMLElement | null
     panel.current?.focus()
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab' || !panel.current) return
+      const stops = panel.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      if (!stops.length) return
+      const first = stops[0]
+      const last = stops[stops.length - 1]
+      const on = document.activeElement
+      if (e.shiftKey && (on === first || on === panel.current)) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && on === last) {
+        e.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      opener?.focus?.()
+    }
   }, [onClose])
 
   return (
@@ -64,22 +92,29 @@ export function Inspector({
         aria-modal="true"
         aria-label={`${member.label} in detail`}
       >
+        {/* One line. The verdict used to be a bordered pill sitting exactly where a
+            drawer's confirm button lives, twenty pixels from the close control — so
+            "CONTINUE", a status, read as "continue the council", an action. It is a
+            fact about this panelist and it belongs with the other facts. */}
         <div className="drawer-head">
           <span className="label">{member.label}</span>
           <span className="real">
-            {[member.name, member.model, member.effort && `${member.effort} effort`]
+            {[
+              member.name,
+              member.effort && `${member.effort} effort`,
+              fmtTokens(member.tokens) + ' tok',
+            ]
               .filter(Boolean)
-              .join(' · ') || 'identity withheld'}
+              .join(' · ')}
           </span>
-          <span className="spacer" />
-          <span className={`badge ${member.verdict ? '' : 'unknown'}`}>
+          <span className={`state verdict-${member.verdict ?? 'none'}`}>
             {member.dropped
               ? 'dropped'
               : member.speaking
-                ? 'speaking'
+                ? 'speaking now'
                 : (member.verdict ?? 'not spoken yet')}
           </span>
-          <button className="ghost" onClick={onClose} title="Close (Esc)">
+          <button className="ghost icon" onClick={onClose} title="Close (Esc)" aria-label="Close">
             ✕
           </button>
         </div>
@@ -93,7 +128,7 @@ export function Inspector({
             >
               {TAB_LABEL[name]}
               {name === 'console' && member.calls?.length ? (
-                <span className="faint"> {member.calls.length}</span>
+                <span className="count">{member.calls.length}</span>
               ) : null}
             </button>
           ))}
@@ -238,14 +273,53 @@ function Console({ sessionId, calls }: { sessionId: string; calls: CallRecord[] 
 
       {error && <div className="error-banner">{error}</div>}
       {open && !text && !error && <div className="loading">loading…</div>}
-      {open && text && (
-        <>
-          {live && <div className="note">Still running — this reloads every few seconds.</div>}
-          <pre className="console">{text}</pre>
-        </>
-      )}
+      {open && text && <Log text={text} live={live} />}
     </>
   )
+}
+
+/**
+ * One console log: what the process *was*, then what it *printed*.
+ *
+ * The file states both — a `#` comment block, then the harness's raw stream — and
+ * rendering them as one wall of monospace joined the only two things this screen has
+ * to keep apart. The header becomes a table; the body stays verbatim, because being
+ * verbatim is the entire point of it.
+ */
+function Log({ text, live }: { text: string; live: boolean }) {
+  const { fields, body } = split(text)
+  return (
+    <>
+      {live && <div className="note">Still running — this reloads every few seconds.</div>}
+      {fields.length > 0 && (
+        <dl className="call-head">
+          {fields.map(([key, value]) => (
+            <div key={key} style={{ display: 'contents' }}>
+              <dt>{key}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <pre className="console">{body}</pre>
+    </>
+  )
+}
+
+/** Peel the leading `# key : value` block off a call log. */
+function split(text: string): { fields: [string, string][]; body: string } {
+  const lines = text.split('\n')
+  const fields: [string, string][] = []
+  let i = 0
+  for (; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line.startsWith('#')) break
+    const match = /^#\s*([a-z ]+?)\s*:\s(.*)$/.exec(line)
+    if (match) fields.push([match[1], match[2]])
+    // Anything else in the block — the two prose lines at the top, the rule — is
+    // explanation this presentation makes unnecessary.
+  }
+  return { fields, body: lines.slice(i).join('\n').replace(/^\n+/, '') }
 }
 
 function Plan({ sessionId, member }: { sessionId: string; member: Panelist }) {

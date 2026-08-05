@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8787/session/2026-08-05_190812?token=xUwGZ1riV7GfNM0XaabWwIWCjuPvdtT-JeHCYDjSLos",
+  "shots": [
+    {
+      "out": "../.council-shots/b-session-scrolled.png",
+      "prep": "window.scrollTo(0, 780)",
+      "after": 400
+    },
+    {
+      "out": "../.council-shots/c-digest.png",
+      "prep": "[...document.querySelectorAll('.tab')].find(b=>b.innerText.trim()==='digest').click()",
+      "after": 700
+    },
+    {
+      "out": "../.council-shots/d-setup.png",
+      "prep": "[...document.querySelectorAll('.tab')].find(b=>b.innerText.includes('what it was given')).click()",
+      "after": 700
+    },
+    {
+      "out": "../.council-shots/e-inspector-history.png",
+      "prep": "document.querySelectorAll('.seat')[1].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))",
+      "after": 1400
+    },
+    {
+      "out": "../.council-shots/f-inspector-console.png",
+      "prep": "document.querySelectorAll('.seat')[1].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})); await new Promise(r=>setTimeout(r,600)); [...document.querySelectorAll('.drawer-tabs .tab')].find(b=>b.innerText.startsWith('console')).click(); await new Promise(r=>setTimeout(r,500)); document.querySelectorAll('.call')[0].click()",
+      "after": 1400
+    },
+    {
+      "out": "../.council-shots/g-dark.png",
+      "prep": "document.querySelector('.brand button').click()",
+      "after": 500
+    },
+    { "out": "../.council-shots/h-home.png", "url": "http://127.0.0.1:8787/" },
+    { "out": "../.council-shots/i-new.png", "url": "http://127.0.0.1:8787/new", "h": 1200 },
+    { "out": "../.council-shots/j-mobile.png", "w": 420, "h": 900 }
+  ]
+}

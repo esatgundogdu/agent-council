@@ -13,3 +13,6 @@ dist/
 .claude/settings.local.json
 # TypeScript incremental build state
 web/tsconfig.tsbuildinfo
+
+# Screenshots taken while working on the UI; regenerate with web/shot.mjs.
+.council-shots/

@@ -253,6 +253,32 @@ def test_output_left_in_the_pipe_at_the_deadline_is_recovered(tmp_path):
     assert "exit code: killed" in text
 
 
+def test_the_cap_counts_bytes_and_not_characters(tmp_path):
+    """Every budget in this file is named and documented in bytes.
+
+    Counting `len(str)` instead let the file on disk run past the nominal cap by up to
+    4x, and made the footer and the size shown in the UI wrong by the same factor, for
+    any panelist that printed non-ASCII — which is any panelist writing prose in a
+    language other than English, box-drawing, or an emoji. Every earlier test wrote
+    pure ASCII, where the two counts coincide, so none of them could catch it.
+    """
+    log = CallLog(tmp_path / "c.log", limit=4_000, tail_bytes=500)
+    log.start(["x"], cwd=".")
+    line = "yürüttüğü işlem — köşe: ✓ 日本語"  # 30 characters, 47 bytes
+    assert len(line) < len(line.encode("utf-8"))
+    for _ in range(200):
+        log.write("out", line)
+    log.finish(0, 1.0)
+
+    on_disk = log.path.stat().st_size
+    assert log.out_bytes == 200 * len(line.encode("utf-8"))
+    # The head is capped in the same units the cap is quoted in, so the file cannot
+    # overrun it by a factor of however multi-byte the output happened to be.
+    assert on_disk <= 4_000 + 500 + 2_000, f"{on_disk} bytes on disk against a 4 kB cap"
+    footer = log.path.read_text(encoding="utf-8")
+    assert f"stdout   : {log.out_bytes:,} bytes" in footer
+
+
 def test_the_full_size_is_reported_even_when_the_file_is_capped(tmp_path):
     log = CallLog(tmp_path / "c.log", limit=2_000, tail_bytes=200)
     log.start(["x"], cwd=".")

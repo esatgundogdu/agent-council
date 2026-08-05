@@ -17,6 +17,7 @@ stream stays re-parsable and copy-pastable, and only stderr is marked.
 
 from __future__ import annotations
 
+import time
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +36,12 @@ TAIL_BYTES = 32 * 1024
 #: its prompt positionally the whole prompt would otherwise be here — and it is already
 #: in `stream.jsonl`, in full, exactly once.
 MAX_ARG_CHARS = 400
+
+#: How stale the file on disk may get. A reader polls a running log every few seconds,
+#: so this only has to be well inside that — and flushing per line put a syscall per
+#: line of every harness's output on the event loop all the panelists share.
+FLUSH_SECONDS = 0.25
+FLUSH_BYTES = 8 * 1024
 
 STDERR_PREFIX = "[stderr] "
 
@@ -96,11 +103,16 @@ class CallLog:
         self.err_bytes = 0
         self.skipped = 0
         self.truncated = False
-        #: Lines held back once the cap is hit, so the end survives the middle.
-        self._tail: deque[str] = deque()
+        #: Lines held back once the cap is hit, so the end survives the middle. Bytes,
+        #: not text: every budget here is in bytes, and a deque of `str` made the cap,
+        #: the tail and the reported size all count code points instead — wrong by up
+        #: to 4x for any panelist that printed non-ASCII, which is any of them.
+        self._tail: deque[bytes] = deque()
         self._tail_bytes = 0
         self._handle = None
         self._closed = False
+        self._unflushed = 0
+        self._flushed_at = time.monotonic()
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -111,7 +123,9 @@ class CallLog:
             return
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self._handle = self.path.open("w", encoding="utf-8", errors="replace", newline="")
+            # Binary, so that every count in this class is a byte count by construction
+            # rather than by remembering to encode at each site.
+            self._handle = self.path.open("wb")
         except OSError:
             self._handle = None
             self._closed = True
@@ -130,25 +144,34 @@ class CallLog:
 
     def write(self, stream: str, line: str) -> None:
         """Record one line. `stream` is "out" or "err"."""
+        # Encoded, not `len(str)`. Every quantity here is named and documented as bytes,
+        # and the cap is sold as a hard one — but a panelist is free to print prose in
+        # any language, box-drawing characters or emoji, and counting code points let
+        # the file on disk run past the nominal 2 MiB by up to 4x while the footer and
+        # the size shown in the UI were wrong by the same factor. Found by a real panel
+        # reviewing this feature; the existing tests could not catch it because they
+        # only ever wrote ASCII, where the two counts coincide.
+        size = len(line.encode("utf-8", "replace"))
         if stream == "err":
-            self.err_bytes += len(line)
+            self.err_bytes += size
             line = STDERR_PREFIX + line
         else:
-            self.out_bytes += len(line)
+            self.out_bytes += size
         if self._handle is None:
             return
         text = line if line.endswith("\n") else line + "\n"
+        raw = text.encode("utf-8", "replace")
         # `not self.truncated` is load-bearing. Without it a short line arriving after
         # the cap was hit still fits under `limit` and goes back into the head — landing
         # in the file *before* content that was written to the tail earlier. A console
         # log whose lines are out of order is worse than one that is short.
-        if not self.truncated and self.written + len(text) <= self.limit:
-            self._raw(text)
+        if not self.truncated and self.written + len(raw) <= self.limit:
+            self._write(raw)
             return
         if not self.truncated:
             self._begin_tail()
-        self._tail.append(text)
-        self._tail_bytes += len(text)
+        self._tail.append(raw)
+        self._tail_bytes += len(raw)
         self._trim_tail()
 
     def _begin_tail(self) -> None:
@@ -166,6 +189,10 @@ class CallLog:
             f"# what follows is being held and is appended when it ends.\n"
             f"#{'─' * 76}\n\n"
         )
+        # Past the throttle, deliberately. This is the one line whose whole purpose is
+        # to reach a reader immediately — it is what stops a live view of a flooding
+        # harness from looking identical to a hung one — and it happens once per call.
+        self._flush()
 
     def _trim_tail(self) -> None:
         """Keep the tail inside its budget, newest content first.
@@ -187,9 +214,16 @@ class CallLog:
                 self._tail_bytes -= len(oldest)
                 self.skipped += len(oldest)
             else:
-                self._tail[0] = oldest[excess:]
-                self._tail_bytes -= excess
-                self.skipped += excess
+                # Forward to a character boundary. A byte-exact cut can land inside a
+                # multi-byte sequence and leave a replacement glyph at the seam, and
+                # this file is read as UTF-8 by everything downstream — the cost of
+                # keeping it valid is at most three bytes of slack.
+                cut = excess
+                while cut < len(oldest) and (oldest[cut] & 0xC0) == 0x80:
+                    cut += 1
+                self._tail[0] = oldest[cut:]
+                self._tail_bytes -= cut
+                self.skipped += cut
 
     def finish(self, exit_code: int | None, seconds: float, error: str = "") -> None:
         """Flush the tail, write the footer, close. Safe to call twice."""
@@ -200,12 +234,13 @@ class CallLog:
             return
         if self.truncated:
             self._raw(f"#  … {self.skipped:,} bytes dropped from the middle …\n\n")
-            for line in self._tail:
-                self._raw(line)
+            for chunk in self._tail:
+                self._write(chunk)
         self._raw(_footer(self, exit_code, seconds, error))
         try:
+            self._handle.flush()
             self._handle.close()
-        except OSError:
+        except (OSError, ValueError):
             pass
         self._handle = None
 
@@ -224,8 +259,10 @@ class CallLog:
         if not text.strip() or not self.written:
             return
         try:
-            with self.path.open("a", encoding="utf-8", errors="replace", newline="") as handle:
-                handle.write(f"# {label:<9}: {text.strip()[:2000]}\n")
+            with self.path.open("ab") as handle:
+                handle.write(
+                    f"# {label:<9}: {text.strip()[:2000]}\n".encode("utf-8", "replace")
+                )
         except OSError:
             pass
 
@@ -237,17 +274,40 @@ class CallLog:
         return self.out_bytes + self.err_bytes
 
     def _raw(self, text: str) -> None:
+        self._write(text.encode("utf-8", "replace"))
+
+    def _write(self, raw: bytes) -> None:
         if self._handle is None:
             return
         try:
-            self._handle.write(text)
-            self._handle.flush()
+            self._handle.write(raw)
         except (OSError, ValueError):
             # ValueError: the handle was closed under us. Either way, stop trying —
             # a log that cannot be written must not turn into an exception per line.
             self._handle = None
             return
-        self.written += len(text)
+        self.written += len(raw)
+        self._unflushed += len(raw)
+        # Throttled rather than per line. Every panelist's pump shares one event loop,
+        # so a flush per line is a syscall per line of every harness's output on the
+        # thread that is also delivering everyone else's deltas — and the file only has
+        # to be current enough for a reader polling it every three seconds.
+        if (
+            self._unflushed >= FLUSH_BYTES
+            or time.monotonic() - self._flushed_at >= FLUSH_SECONDS
+        ):
+            self._flush()
+
+    def _flush(self) -> None:
+        if self._handle is None:
+            return
+        try:
+            self._handle.flush()
+        except (OSError, ValueError):
+            self._handle = None
+            return
+        self._unflushed = 0
+        self._flushed_at = time.monotonic()
 
 
 class _Discard(CallLog):

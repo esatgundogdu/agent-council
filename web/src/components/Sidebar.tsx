@@ -1,7 +1,51 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState } from "react";
 
-import { ago, tokens as fmtTokens } from '../format'
-import type { SessionRow, Theme } from '../types'
+import { ago, tokens as fmtTokens } from "../format";
+import type { SessionRow, Theme } from "../types";
+
+function SunIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="15"
+      height="15"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle
+        cx="8"
+        cy="8"
+        r="3.1"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <g stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+        <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M12.9 3.1l-1.4 1.4M4.5 11.5l-1.4 1.4" />
+      </g>
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="15"
+      height="15"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M13.2 10.1A5.6 5.6 0 0 1 6 2.8a5.6 5.6 0 1 0 7.2 7.3z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 /**
  * Every council on this machine, newest first.
@@ -20,27 +64,27 @@ export function Sidebar({
   theme,
   onTheme,
 }: {
-  sessions: SessionRow[]
-  active: string | null
-  onNew: () => void
-  onOpen: (id: string) => void
-  onDelete: (id: string) => void
-  theme: Theme
-  onTheme: (theme: Theme) => void
+  sessions: SessionRow[];
+  active: string | null;
+  onNew: () => void;
+  onOpen: (id: string) => void;
+  onDelete: (id: string) => void;
+  theme: Theme;
+  onTheme: (theme: Theme) => void;
 }) {
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState("");
 
   const rows = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    if (!needle) return sessions
+    const needle = query.trim().toLowerCase();
+    if (!needle) return sessions;
     return sessions.filter((row) =>
       `${row.task} ${row.project} ${row.id} ${row.mode} ${row.state}`
         .toLowerCase()
         .includes(needle),
-    )
-  }, [sessions, query])
+    );
+  }, [sessions, query]);
 
-  const running = sessions.filter((row) => row.live).length
+  const running = sessions.filter((row) => row.live).length;
 
   return (
     <aside className="sidebar">
@@ -55,13 +99,19 @@ export function Sidebar({
           </span>
         )}
         <span className="spacer" />
+        {/* Drawn, not a dingbat. ☀/☾ depend on a glyph the system font may not have,
+            and where it is missing the button renders as a stray letter. */}
         <button
-          className="ghost tiny"
-          title={theme === 'dark' ? 'Read on paper' : 'Read by lamplight'}
-          aria-label={theme === 'dark' ? 'Switch to the light theme' : 'Switch to the dark theme'}
-          onClick={() => onTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="ghost icon"
+          title={theme === "dark" ? "Read on paper" : "Read by lamplight"}
+          aria-label={
+            theme === "dark"
+              ? "Switch to the light theme"
+              : "Switch to the dark theme"
+          }
+          onClick={() => onTheme(theme === "dark" ? "light" : "dark")}
         >
-          {theme === 'dark' ? '☾' : '☀'}
+          {theme === "dark" ? <MoonIcon /> : <SunIcon />}
         </button>
       </div>
 
@@ -86,25 +136,31 @@ export function Sidebar({
           <div className="empty">Nothing matches “{query}”.</div>
         )}
         {rows.map((row) => (
-          <div key={row.id} className={`session-row${row.id === active ? ' active' : ''}`}>
+          <div
+            key={row.id}
+            className={`session-row${row.id === active ? " active" : ""}`}
+          >
             <button className="open" onClick={() => onOpen(row.id)}>
               <div className="top">
                 <span className={`badge ${badgeClass(row)}`}>
                   {row.live && <span className="dot" />}
-                  {row.paused ? 'paused' : row.state}
+                  {row.paused ? "paused" : row.state}
                 </span>
                 <span className="when">{ago(row.started_at)}</span>
               </div>
-              <div className="task">{row.task || '(no task)'}</div>
+              <div className="task">{row.task || "(no task)"}</div>
               <div className="meta">
                 {row.project} · {row.mode}
-                {row.tokens ? ` · ${fmtTokens(row.tokens)}` : ''}
-                {row.live && row.round ? ` · round ${row.round}` : ''}
+                {row.tokens ? ` · ${fmtTokens(row.tokens)}` : ""}
+                {row.live && row.round ? ` · round ${row.round}` : ""}
               </div>
             </button>
             <button
               className="remove"
-              title={row.live ? 'Stop it before deleting' : 'Delete this council'}
+              title={
+                row.live ? "Stop it before deleting" : "Delete this council"
+              }
+              aria-label={`Delete the council: ${row.task || row.id}`}
               disabled={row.live}
               onClick={() => onDelete(row.id)}
             >
@@ -114,11 +170,11 @@ export function Sidebar({
         ))}
       </div>
     </aside>
-  )
+  );
 }
 
 function badgeClass(row: SessionRow): string {
-  if (row.paused) return 'paused'
-  if (row.live) return 'running'
-  return row.state
+  if (row.paused) return "paused";
+  if (row.live) return "running";
+  return row.state;
 }

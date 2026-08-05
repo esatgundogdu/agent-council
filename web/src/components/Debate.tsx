@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
 
 import { tokens as fmtTokens } from '../format'
+import { tintOf } from '../seats'
 import { Markdown } from './Markdown'
-import type { Mode, Round, Turn } from '../types'
+import type { Mode, Panelist, Round, Turn } from '../types'
 
 /**
  * The discussion as it happens. A turn in flight shows the panelist's raw output as
@@ -13,10 +14,12 @@ export function Debate({
   rounds,
   phase,
   mode,
+  panel,
 }: {
   rounds: Round[]
   phase: number | null
   mode: Mode
+  panel: Panelist[]
 }) {
   const consulting = mode === 'consult'
   const bottom = useRef<HTMLDivElement>(null)
@@ -57,6 +60,7 @@ export function Debate({
               key={`${turn.label}-${round.round}-${i}`}
               turn={turn}
               consulting={consulting}
+              tint={tintOf(panel, turn.label)}
             />
           ))}
         </section>
@@ -74,7 +78,15 @@ const REASON_LABEL = {
   consult: { READY: 'Nothing blocking, because: ', CONTINUE: 'Blocked on: ' },
 } as const
 
-function TurnView({ turn, consulting }: { turn: Turn; consulting: boolean }) {
+function TurnView({
+  turn,
+  consulting,
+  tint,
+}: {
+  turn: Turn
+  consulting: boolean
+  tint: string
+}) {
   if (turn.chair) {
     return (
       <article className="turn chair">
@@ -102,11 +114,17 @@ function TurnView({ turn, consulting }: { turn: Turn; consulting: boolean }) {
   }
 
   return (
+    // The speaker's own colour, down the side. The table introduced a colour per
+    // panelist and the transcript then ignored it, so the code never paid for itself —
+    // scrolling the discussion and reading the table were two unrelated acts.
     <article
       className={`turn${turn.streaming ? ' speaking' : ''}${turn.malformed ? ' raw' : ''}`}
+      style={{ borderLeftColor: turn.streaming ? undefined : tint }}
     >
       <div className="turn-head">
-        <span className="label">{turn.label}</span>
+        <span className="label" style={{ color: tint }}>
+          {turn.label}
+        </span>
         {turn.verdict && (
           <span className={`badge verdict-${turn.verdict}`} style={{ borderColor: 'currentColor' }}>
             {turn.verdict}

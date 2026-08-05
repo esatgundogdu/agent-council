@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 
 import { api } from '../api'
-import { tokens as fmtTokens } from '../format'
 import { Markdown } from './Markdown'
 import type { AgentEntry, AgentThread as Thread } from '../types'
 
@@ -38,11 +37,8 @@ export function AgentThread({ sessionId, label }: { sessionId: string; label: st
 
   return (
     <>
-      <div className="dim" style={{ marginBottom: '1.2rem', fontSize: '0.88rem' }}>
-        {thread.name ? `${thread.name}` : 'identity withheld'}
-        {thread.model ? ` · ${thread.model}` : ''} · {fmtTokens(thread.tokens)} tokens ·{' '}
-        {thread.entries.length} entries
-      </div>
+      {/* The drawer header already says who this is, what it is and what it cost. This
+          line repeated all three ninety pixels below it. */}
       {thread.entries.length === 0 && (
         <div className="note">This panelist has not been asked anything yet.</div>
       )}
@@ -84,7 +80,15 @@ function Entry({ entry }: { entry: AgentEntry }) {
   const sent = entry.role === 'sent'
   return (
     <div className={`entry ${entry.role}`}>
-      <div className="head" onClick={() => setOpen(!open)}>
+      {/* A real button. This was a `div` with an onClick and `cursor: pointer` — it
+          advertised itself as the control for expanding a prompt, and a keyboard could
+          not reach it, focus it or operate it. */}
+      <button
+        type="button"
+        className="head"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
         <span>{sent ? 'we sent' : 'it replied'}</span>
         <span>
           {entry.phase === 1 ? 'phase 1 · plan' : `round ${entry.round ?? '—'}`}
@@ -96,7 +100,7 @@ function Entry({ entry }: { entry: AgentEntry }) {
         <span>
           {open ? '▾' : '▸'} {(entry.text ?? '').length} chars
         </span>
-      </div>
+      </button>
       {open && (
         <div className="body">
           {sent ? (

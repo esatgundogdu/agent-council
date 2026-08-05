@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api, streamSessions } from './api'
 import { ago, duration, tokens as fmtTokens } from './format'
@@ -126,9 +126,35 @@ function Confirm({
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const box = useRef<HTMLDivElement>(null)
+
+  // The one destructive, irreversible action in the application, and it had no role,
+  // no Escape and no focus management at all — less than the read-only drawer beside
+  // it. Focus lands on Keep, deliberately: the safe choice should be the one already
+  // under the return key.
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    box.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      opener?.focus?.()
+    }
+  }, [onCancel])
+
   return (
-    <div className="scrim" onClick={onCancel}>
-      <div className="dialog" onClick={(event) => event.stopPropagation()}>
+    <div className="scrim" onClick={onCancel} role="presentation">
+      <div
+        className="dialog"
+        ref={box}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Delete this council?"
+        onClick={(event) => event.stopPropagation()}
+      >
         <h3>Delete this council?</h3>
         <p className="dim">{row.task || '(no task)'}</p>
         <div className="cmd">
@@ -159,38 +185,30 @@ function Home({
   onOpen: (id: string) => void
 }) {
   const live = sessions.filter((row) => row.live)
-  const recent = sessions.filter((row) => !row.live).slice(0, 5)
 
   return (
     <div className="page">
       <div className="hero">
-        <h2>Plan Council</h2>
+        <h2>Council</h2>
         <p>
           Several model agents read your repository independently, write their own plans,
           argue about them, and stop when they agree. The point is the disagreement: each
           panelist explores the repo itself, so nobody inherits anyone else’s framing.
         </p>
         <button className="primary" onClick={onNew}>
-          Convene a council
+          New council
         </button>
       </div>
 
+      {/* Only what is happening now. There used to be a "Recent" grid here as well,
+          listing the same five sessions the rail lists two inches to the left — with
+          less metadata, double-truncated, and the running one indistinguishable from
+          the finished ones. */}
       {live.length > 0 && (
         <>
           <div className="round-head">Running now</div>
           <div className="card-grid">
             {live.map((row) => (
-              <Card key={row.id} row={row} onOpen={onOpen} />
-            ))}
-          </div>
-        </>
-      )}
-
-      {recent.length > 0 && (
-        <>
-          <div className="round-head">Recent</div>
-          <div className="card-grid">
-            {recent.map((row) => (
               <Card key={row.id} row={row} onOpen={onOpen} />
             ))}
           </div>

@@ -100,11 +100,23 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
 
   return (
     <>
+      {/* The task, first. It is what this council *is*, and it was nowhere on the
+          screen — the header carried a state word and two numbers across an otherwise
+          empty bar, and you had to open a tab to find out what had been asked. */}
       <div className="masthead">
-        <span className={`badge ${status.paused ? 'paused' : status.state}`}>
-          {status.live && <span className="dot" />}
-          {status.paused ? 'paused' : status.state}
-        </span>
+        <div className="masthead-id">
+          <span className={`badge ${status.paused ? 'paused' : status.state}`}>
+            {status.live && <span className="dot" />}
+            {status.paused ? 'paused' : status.state}
+          </span>
+          {/* Two lines and a real ellipsis. It was clamped to one, cut mid-clause with
+              no ellipsis at all, and had 490px of empty header immediately to its
+              right — while the session list beside it truncated correctly. */}
+          <h2 title={session.task}>{session.task.split('\n').find((l) => l.trim()) || 'Untitled'}</h2>
+          <span className="masthead-sub">
+            {session.mode} · {project(session.project_dir)} · {clock(session.started_at)}
+          </span>
+        </div>
 
         <div className="gauges">
           <Gauge
@@ -120,13 +132,19 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
           />
         </div>
 
-        <div className="spacer" />
-        {running && (
+        {running ? (
           <Controls
             paused={status.paused}
             maxRounds={Number(session.protocol.max_rounds) || 0}
             onControl={control}
           />
+        ) : (
+          state.has_digest &&
+          tab !== 'digest' && (
+            <button className="primary" onClick={() => setTab('digest')}>
+              Read the digest →
+            </button>
+          )
         )}
       </div>
 
@@ -158,22 +176,25 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
         {/* The digest is the reason the council was convened, and on a long run the
             user is not watching when it lands. A dot on a tab is not enough of an
             ending. */}
-        {tab === 'session' && !running && state.has_digest && (
-          <button className="finished" onClick={() => setTab('digest')}>
-            <b>{noCrossReview(state) ? 'Everyone has answered.' : 'The council has finished.'}</b>
-            <span>
-              {summarise(state.panel, noCrossReview(state))}
-              {status.termination ? ` · ${status.termination.replace(/_/g, ' ')}` : ''} —
-              read the digest →
-            </span>
-          </button>
-        )}
-
         {tab === 'session' && (
           <>
             <Table state={state} onInspect={setInspecting} onChair={() => setTab('setup')} />
+            {/* One line, where the banner used to be a 150px box repeating the state
+                the header chip, the session list and the table centre had already
+                given. What it adds that they do not is how the run *ended*. */}
+            {!running && state.has_digest && (
+              <div className={`ending ${outcome(state)}`}>
+                {summarise(state.panel, noCrossReview(state))}
+                {status.termination ? ` · ${status.termination.replace(/_/g, ' ')}` : ''}
+              </div>
+            )}
             <Notices state={state} />
-            <Debate rounds={state.rounds} phase={status.phase} mode={session.mode} />
+            <Debate
+              rounds={state.rounds}
+              phase={status.phase}
+              mode={session.mode}
+              panel={state.panel}
+            />
             {running && <Chair onSend={(text) => control('chair', { text })} />}
           </>
         )}
@@ -222,6 +243,22 @@ function summarise(panel: SessionState['panel'], unheard: boolean): string {
 /** One round of a `consult` is one parallel round: nobody heard anybody. Two is a debate. */
 function noCrossReview(state: SessionState): boolean {
   return state.session.mode === 'consult' && (state.status.rounds ?? state.rounds.length) <= 1
+}
+
+/**
+ * How a finished council should look, rather than how it would like to look.
+ *
+ * Green when the panel converged, amber when it did not. A run that ended with every
+ * panelist still objecting is a result the user has to act on, and announcing it in
+ * the same success box as a unanimous READY is the screen telling a comfortable lie.
+ */
+function outcome(state: SessionState): 'settled' | 'open' {
+  const ready = state.panel.filter((p) => p.verdict === 'READY').length
+  return ready === state.panel.length && ready > 0 ? 'settled' : 'open'
+}
+
+function project(dir: string): string {
+  return dir.split(/[\\/]/).filter(Boolean).pop() ?? dir
 }
 
 /** Wall-clock seconds since the session began, or null if that cannot be known. */
@@ -435,11 +472,11 @@ function Setup({ state }: { state: SessionState }) {
       <div className="round-head" style={{ marginTop: 0 }}>
         The task, as the panel received it
       </div>
-      <div className="md">
-        <pre>
-          <code>{session.task}</code>
-        </pre>
-      </div>
+      {/* Prose, set as prose. This was a monospace code block: the most important
+          sentence in the session, in the least readable setting on the screen, when it
+          is not code, a path, an id or a number. `white-space: pre-wrap` keeps it
+          byte-for-byte, which is the property that actually matters here. */}
+      <blockquote className="verbatim">{session.task}</blockquote>
 
       {session.context && (
         <>
