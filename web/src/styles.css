@@ -1,122 +1,119 @@
-/* Two themes, one set of names. Lamplight is the default and paper is a click away;
-   every rule below reads its colours from these names, so the whole palette swaps at
+/* Two themes, one set of names. Dark is the default and light is a click away; every
+   rule below reads its colours from these names, so the whole palette swaps at
    `:root[data-theme]` and no rule has to know which one is on.
 
-   The paper values live here in `:root` because they are also the fallback if the
-   attribute is ever missing, and a page with no attribute should still be readable.
+   Neutral, not warm. The previous version was a printed-paper affect — cream grounds,
+   a Didot wordmark, Charter body text, hairline rules — which reads as decoration
+   before it reads as software. This is the same information in a plain modern voice:
+   one sans for everything a person reads, monospace only for what a machine wrote,
+   and separation by surface rather than by drawing a box around everything.
 
-   The names say what a thing is for rather than what colour it is. They used to be
-   `--ink` for the background and `--paper` for the text, which is exactly backwards on
-   a light theme and would have made every rule below read as a lie. */
+   The names say what a thing is for rather than what colour it is. */
 :root {
-  /* Paper. The page is the desk; surfaces are paper laid on it, and paper is
-     *lighter* than what it sits on. The first version had them within two percent of each other, so
-     nothing separated from anything and the whole screen read as one flat wash. */
-  --bg: #eee8dd;
-  --bg-2: #fbf8f2;
-  --bg-3: #f4eee4;
-  --bg-4: #e7dfd1;
-  --rule: #ddd3c3;
-  --rule-soft: #e8e0d3;
-  --rule-strong: #c6b9a4;
-  --text: #23201b;
-  --text-strong: #100d09;
-  --text-2: #554d42;
-  /* Every hint, timestamp and activity line is this colour, at 0.62–0.8rem. Small text
-     needs 4.5:1: this is 5.2:1 on --bg and 4.9:1 on --bg-2, the card background it also
-     has to work against. Every accent below clears the same bar on both. */
-  --text-faint: #6b6053;
+  /* Light. Cool neutrals, white cards, no cream anywhere. */
+  --bg: #f5f6f8;
+  --bg-2: #ffffff;
+  --bg-3: #eef0f3;
+  --bg-4: #e3e6eb;
+  --rule: #e3e6eb;
+  --rule-soft: #eef0f3;
+  --rule-strong: #c3c9d2;
+  --text: #191c21;
+  --text-strong: #0a0c0f;
+  --text-2: #4a525e;
+  /* Small text needs 4.5:1, and this is the colour of every hint, stamp and caption. */
+  --text-faint: #646d7a;
 
-  --accent: #9c4f29;
-  --accent-2: #33566b;
-  --ready: #4a6b3f;
-  --continue: #8a5c10;
-  --danger: #a3301f;
-  --live: #2f6b52;
+  --accent: #2563eb;
+  --accent-2: #0e7490;
+  --ready: #15803d;
+  --continue: #b45309;
+  --danger: #dc2626;
+  --live: #15803d;
 
-  /* Per-seat tints: ink on paper, not highlighter. Spread about 60° of hue apart so
-     adjacent seats never read as the same colour on a 28px circle, and every one of
-     them clears 4.5:1 on --bg and --bg-2 — they carry the initial and the caption, so
-     they are text as much as they are decoration. */
-  --a: #35657a;
-  --b: #6f4a7a;
-  --c: #3f6b45;
-  --d: #6b6420;
-  --e: #2f6b6b;
-  --f: #8a4368;
+  /* One colour per panelist, carried by the avatar, the name and the rule down the
+     side of their messages. None of them is the accent: a panelist tinted like the
+     interaction colour is ambiguous between "this is A" and "this is selected". */
+  --a: #2563eb;
+  --b: #7c3aed;
+  --c: #15803d;
+  --d: #b45309;
+  --e: #0e7490;
+  --f: #be185d;
 
-  --wash-accent: rgba(156, 79, 41, 0.07);
-  --wash-accent-2: rgba(156, 79, 41, 0.13);
-  --wash-danger: rgba(163, 48, 31, 0.08);
-  --wash-live: rgba(47, 107, 82, 0.09);
-  --selection: rgba(156, 79, 41, 0.22);
-  --scrim: rgba(36, 29, 22, 0.44);
-  --sidebar-bg: linear-gradient(180deg, #efe4d3, #eaddc9);
-  --veil-down: linear-gradient(180deg, rgba(244, 236, 224, 0.97), rgba(244, 236, 224, 0.9));
-  --veil-up: linear-gradient(180deg, rgba(244, 236, 224, 0.82), rgba(244, 236, 224, 0.98) 35%);
-  /* Paper is not flat. 3.5% noise, one inline SVG, no request. */
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  --wash-accent: rgba(37, 99, 235, 0.07);
+  --wash-accent-2: rgba(37, 99, 235, 0.12);
+  --wash-danger: rgba(220, 38, 38, 0.07);
+  --wash-live: rgba(21, 128, 61, 0.08);
+  --selection: rgba(37, 99, 235, 0.18);
+  --scrim: rgba(15, 18, 23, 0.45);
+  --sidebar-bg: #f0f2f5;
+  --veil-down: rgba(245, 246, 248, 0.86);
+  --veil-up: linear-gradient(180deg, rgba(245, 246, 248, 0.7), rgba(245, 246, 248, 0.97) 40%);
+  --grain: none;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px -16px rgba(16, 24, 40, 0.2);
 
-  --font-display: 'Didot', 'Bodoni 72', Baskerville, 'Playfair Display', Georgia, serif;
-  --font-body: Charter, 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, Monaco, 'Cascadia Mono', 'Courier New', monospace;
+  /* One family for everything a person reads. Monospace is reserved for what a machine
+     produced — a path, a token count, an id, a log line — which is what makes it
+     informative rather than a texture. */
+  --font-body: 'Segoe UI', system-ui, -apple-system, 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Cascadia Mono', Consolas, ui-monospace, 'SF Mono', Menlo, monospace;
 
-  /* One scale, used everywhere. Sizes picked off it rather than invented per rule —
-     which is how the first version ended up with 0.58, 0.6, 0.62, 0.63, 0.64, 0.66,
-     0.68, 0.7 and 0.72rem all doing the job of "small". */
-  --t-micro: 0.72rem;
-  --t-meta: 0.82rem;
-  --t-body: 0.95rem;
+  --t-micro: 0.75rem;
+  --t-meta: 0.84rem;
+  --t-body: 0.94rem;
   --t-lead: 1.05rem;
-  --t-head: 1.25rem;
-  --t-title: 1.6rem;
+  --t-head: 1.2rem;
+  --t-title: 1.55rem;
 
-  /* Prose wants a measure. Without one the discussion set itself 1500px wide and was
-     genuinely hard to read — the single worst thing about the screen. */
+  /* Rounded, not boxed. Three steps, so nothing has to invent its own. */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+
+  /* Prose wants a measure; without one the discussion set itself to the window. */
   --measure: 68ch;
-  --shadow: 0 1px 2px rgba(60, 48, 33, 0.05), 0 6px 18px -10px rgba(60, 48, 33, 0.18);
 }
 
-/* Lamplight — the default. Warmer than the near-black it replaces, and without the
-   two coloured glows the page used to sit under. */
+/* Dark — the default. Neutral slate, not brown. */
 :root[data-theme='dark'] {
-  --bg: #15110e;
-  --bg-2: #241d18;
-  --bg-3: #2f2721;
-  --bg-4: #3b322a;
-  --rule: #3d3327;
-  --rule-soft: #2e261d;
-  --rule-strong: #554839;
-  --text: #ece1cf;
-  --text-strong: #f9f2e4;
-  --text-2: #bcae99;
-  --text-faint: #a2947f;
+  --bg: #0f1116;
+  --bg-2: #171a21;
+  --bg-3: #1e222b;
+  --bg-4: #272c37;
+  --rule: #262b34;
+  --rule-soft: #1c2028;
+  --rule-strong: #3a414e;
+  --text: #e6eaf1;
+  --text-strong: #ffffff;
+  --text-2: #a6aebc;
+  --text-faint: #868f9d;
 
-  --accent: #c9803f;
-  --accent-2: #8fb0cc;
-  --ready: #8fb87e;
-  --continue: #d9a441;
-  --danger: #d97658;
-  --live: #79c7a4;
+  --accent: #6aa1ff;
+  --accent-2: #56c4de;
+  --ready: #4ec98a;
+  --continue: #e2b155;
+  --danger: #f2777a;
+  --live: #4ec98a;
 
-  --a: #8fb6cc;
-  --b: #c390c6;
-  --c: #8fb87e;
-  --d: #c5c073;
-  --e: #7fc2c2;
-  --f: #d992ad;
+  --a: #6aa1ff;
+  --b: #b58cff;
+  --c: #4ec98a;
+  --d: #e2b155;
+  --e: #45c8d4;
+  --f: #f28ab0;
 
-  --wash-accent: rgba(201, 128, 63, 0.09);
-  --wash-accent-2: rgba(201, 128, 63, 0.16);
-  --wash-danger: rgba(217, 118, 88, 0.1);
-  --wash-live: rgba(121, 199, 164, 0.09);
-  --selection: rgba(201, 128, 63, 0.3);
-  --scrim: rgba(10, 8, 6, 0.68);
-  --sidebar-bg: linear-gradient(180deg, #241d16, #1e1813);
-  --veil-down: linear-gradient(180deg, rgba(28, 23, 18, 0.97), rgba(28, 23, 18, 0.9));
-  --veil-up: linear-gradient(180deg, rgba(28, 23, 18, 0.82), rgba(28, 23, 18, 0.98) 35%);
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.028'/%3E%3C/svg%3E");
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 18px -10px rgba(0, 0, 0, 0.6);
+  --wash-accent: rgba(106, 161, 255, 0.1);
+  --wash-accent-2: rgba(106, 161, 255, 0.16);
+  --wash-danger: rgba(242, 119, 122, 0.1);
+  --wash-live: rgba(78, 201, 138, 0.1);
+  --selection: rgba(106, 161, 255, 0.28);
+  --scrim: rgba(6, 8, 11, 0.7);
+  --sidebar-bg: #12151b;
+  --veil-down: rgba(15, 17, 22, 0.86);
+  --veil-up: linear-gradient(180deg, rgba(15, 17, 22, 0.7), rgba(15, 17, 22, 0.97) 40%);
+  --grain: none;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -16px rgba(0, 0, 0, 0.7);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -129,8 +126,8 @@ body {
   font-size: 15px;
   line-height: 1.6;
   min-height: 100vh;
-  background-image: var(--grain);
-  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection { background: var(--selection); }
@@ -167,17 +164,14 @@ body {
   gap: 0.6rem;
 }
 .brand h1 {
-  font-family: var(--font-display);
-  font-size: 1.3rem;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  font-weight: 400;
+  font-size: var(--t-head);
+  letter-spacing: -0.01em;
+  font-weight: 650;
   line-height: 1;
 }
-.brand h1 span { color: var(--continue); }
+.brand h1 span { color: var(--accent); }
 .brand-live {
-  font-size: 0.78rem;
-  font-style: italic;
+  font-size: var(--t-micro);
   color: var(--live);
   display: inline-flex;
   align-items: center;
@@ -208,7 +202,7 @@ body {
   border-left: 2px solid transparent;
 }
 .session-row:hover { background: var(--bg-2); }
-.session-row.active { background: var(--bg-3); border-left-color: var(--continue); }
+.session-row.active { background: var(--bg-3); border-left-color: var(--accent); }
 .session-row .open {
   flex: 1;
   min-width: 0;
@@ -275,6 +269,11 @@ body {
 .session-row .remove:disabled { opacity: 0; }
 
 .main { min-width: 0; display: flex; flex-direction: column; }
+/* Every band down the main column — masthead, participants strip, tabs, page — is a
+   flex item, and a flex item is `min-width: auto`. Without this the participants
+   strip sizes to its own content instead of scrolling inside the column, and takes
+   the whole document wider with it. */
+.main > * { min-width: 0; max-width: 100%; }
 
 /* Narrow: the sidebar stops being a full-height column and becomes a short list above
    the content. It must come after the rules it overrides — declared before them, the
@@ -292,7 +291,16 @@ body {
   .page { padding: 1.2rem 1rem 4rem; }
   .masthead, .tabs { padding-left: 1rem; padding-right: 1rem; }
   .chair-dock { margin-left: -1rem; margin-right: -1rem; padding-left: 1rem; padding-right: 1rem; }
-  .gauges { gap: 0.9rem 1.1rem; }
+  .gauges { gap: 0.9rem 1.1rem; flex-wrap: wrap; }
+}
+
+/* Below a phone the header stops trying to be a row: the identity, the two readings
+   and the action each take the width they need. */
+@media (max-width: 560px) {
+  .masthead { display: grid; gap: 0.6rem; }
+  .masthead .gauges { justify-content: flex-start; }
+  .masthead > button, .masthead .strip { justify-self: stretch; }
+  .masthead > button { width: 100%; }
 }
 
 /* ── generic bits ───────────────────────────────────────── */
@@ -324,11 +332,12 @@ body {
 
 button {
   font-family: var(--font-body);
-  font-size: 0.86rem;
-  letter-spacing: 0.01em;
-  padding: 0.42rem 0.85rem;
+  font-size: var(--t-meta);
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 0.42rem 0.9rem;
   border: 1px solid var(--rule);
-  border-radius: 3px;
+  border-radius: var(--r-sm);
   background: var(--bg-3);
   color: var(--text);
   cursor: pointer;
@@ -336,7 +345,7 @@ button {
 }
 button:hover:not(:disabled) { border-color: var(--text-faint); background: var(--bg-4); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
-button.primary { border-color: var(--continue); color: var(--continue); }
+button.primary { border-color: var(--accent); color: var(--accent); }
 button.primary:hover:not(:disabled) { background: var(--wash-accent-2); }
 button.danger { border-color: var(--danger); color: var(--danger); }
 button.wide { width: 100%; }
@@ -345,13 +354,14 @@ button.ghost { background: none; }
 input, textarea, select {
   width: 100%;
   font-family: var(--font-body);
-  font-size: 0.92rem;
+  font-size: var(--t-body);
+  border-radius: var(--r-sm);
   color: var(--text);
   background: var(--bg-2);
   border: 1px solid var(--rule);
   padding: 0.55rem 0.7rem;
 }
-input:focus, textarea:focus, select:focus { outline: none; border-color: var(--continue); }
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
 textarea { resize: vertical; min-height: 6rem; line-height: 1.55; }
 input[type='number'] { font-family: var(--font-mono); }
 label { display: block; }
@@ -376,7 +386,7 @@ label { display: block; }
   background: var(--bg-2);
   border: 1px solid var(--rule-soft);
   border-left: 3px solid var(--continue);
-  border-radius: 3px;
+  border-radius: var(--r-sm);
   padding: 0.7rem 0.95rem;
   font-size: var(--t-meta);
   color: var(--text-2);
@@ -411,7 +421,7 @@ label { display: block; }
 /* One column, one axis. The table centred itself in a 78rem page while the prose sat
    in a 38rem column inside it, so the drawing and the text it belongs to were centred
    on two different verticals and the table read as an illustration dropped in. */
-.page { padding: 1.4rem 2rem 4rem; max-width: calc(var(--measure) + 6rem); width: 100%; }
+.page { padding: 1.2rem 2rem 4rem; max-width: calc(var(--measure) + 10rem); width: 100%; }
 .page > .turn,
 .page > .round-head,
 .page > .ending,
@@ -423,12 +433,7 @@ label { display: block; }
 .page > .verbatim,
 .page > section { max-width: calc(var(--measure) + 4rem); }
 .page-head { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
-.page-head h2 {
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-}
+.page-head h2 { font-size: var(--t-title); font-weight: 650; letter-spacing: -0.02em; }
 .spacer { flex: 1 1 auto; }
 
 .masthead {
@@ -440,14 +445,14 @@ label { display: block; }
   gap: 1.6rem;
   padding: 0.85rem 2rem 0.8rem;
   background: var(--veil-down);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(16px) saturate(1.4);
   border-bottom: 1px solid var(--rule);
 }
 .masthead-id { min-width: 0; flex: 1; }
 .masthead-id h2 {
-  font-family: var(--font-display);
   font-size: var(--t-lead);
-  font-weight: 400;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   line-height: 1.3;
   color: var(--text-strong);
   margin-top: 0.15rem;
@@ -475,7 +480,18 @@ label { display: block; }
 .gauge .bar > span { display: block; height: 100%; background: var(--live); }
 .gauge .bar.hot > span { background: var(--danger); }
 
-.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--rule); padding: 0 2rem; }
+/* Scrolls rather than wraps or overflows: four labels do not fit a phone, and a tab
+   strip that wraps to two lines stops reading as a tab strip. */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--rule);
+  padding: 0 2rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tabs .tab { flex: none; }
 .tab {
   border: 0;
   background: none;
@@ -499,139 +515,265 @@ label { display: block; }
 .tab .count { font-family: var(--font-mono); font-size: var(--t-micro); color: var(--text-faint); }
 .tab .pip { width: 5px; height: 5px; border-radius: 50%; background: var(--ready); }
 
-/* ── the table ──────────────────────────────────
+/* ── who is in the conversation ─────────────────────
 
-   Who is at this council, who is speaking, and who has spoken this round — answered
-   by looking. The first version spent seven hundred pixels of height to say four
-   names; this one is flatter and wider, the way a table is actually seen, and the
-   seats carry the information rather than the empty middle.  */
+   The group header. Same four facts the round table carried — who is here, who has
+   the floor, where each one stands, who convened it — in about ninety pixels rather
+   than two hundred and ninety, because the room below it needs the height.  */
 
-.table-wrap {
-  position: relative;
-  margin: 0.6rem auto 1.5rem;
-  max-width: 34rem;
+.participants {
+  display: flex;
+  align-items: stretch;
+  gap: 0.2rem;
+  padding: 0.5rem 2rem 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.table-wrap svg { display: block; width: 100%; height: auto; overflow: visible; }
-
-.surface { fill: var(--bg-3); stroke: var(--rule-strong); stroke-width: 1; }
-.surface-inner { fill: none; stroke: var(--rule); stroke-width: 1; }
-
-
-.seat { cursor: pointer; }
-/* A focus ring that is drawn *outside* the plate in a colour that does not depend
-   on the seat's own tint. The previous indicator was a stroke-width change on the
-   plate, which is invisible on the speaking seat: that plate is filled with
-   `currentColor`, the same colour the stroke uses. */
-.seat:focus { outline: none; }
-.seat .focus-ring { fill: none; stroke: none; }
-.seat:focus-visible .focus-ring {
-  stroke: var(--text-strong);
-  stroke-width: 2;
-  stroke-dasharray: none;
+.participants::-webkit-scrollbar { display: none; }
+.participants .rule {
+  flex: none;
+  width: 1px;
+  background: var(--rule);
+  margin: 0.4rem 0.5rem;
 }
-
-/* A seat is a plate on the table. Filled when it has the floor, so the speaker is
-   unmistakable from across the room, which is the whole job of this screen. */
-.seat-bed { fill: var(--bg); }
-.seat .plate {
-  fill: var(--bg-2);
-  stroke: currentColor;
-  stroke-width: 1.25;
-  transition: fill 0.2s ease;
+.participants .who {
+  flex: none;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'avatar name' 'avatar state';
+  gap: 0 0.5rem;
+  align-items: center;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  text-align: left;
+  color: inherit;
 }
-.seat:hover .plate { fill: var(--bg-4); }
-
-.seat.speaking .plate { fill: currentColor; }
-
-/* The ring is this panelist's own round: complete once its turn has landed. */
-.seat .ring {
-  fill: none;
-  stroke: var(--rule);
-  stroke-width: 2.5;
+.participants .who:hover:not(:disabled) { background: var(--bg-2); border-color: var(--rule); }
+.participants .who.dropped { opacity: 0.45; }
+.participants .name {
+  grid-area: name;
+  font-size: var(--t-meta);
+  color: var(--text);
+  white-space: nowrap;
 }
-.seat .ring-done { fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; }
-
-.seat .initial {
-  font-family: var(--font-display);
-  font-size: var(--t-body);
-  fill: currentColor;
-  text-anchor: middle;
-  dominant-baseline: central;
-  pointer-events: none;
+.participants .state {
+  grid-area: state;
+  font-size: var(--t-micro);
+  color: var(--text-faint);
+  white-space: nowrap;
 }
-.seat.speaking .initial { fill: var(--bg-2); }
+.participants .state.now { color: var(--live); }
+.participants .state.ready { color: var(--ready); }
+.participants .state.open { color: var(--continue); }
+.participants .state.gone { color: var(--danger); }
+.participants .who.chair .avatar { color: var(--text-2); border-color: var(--rule-strong); }
 
-/* The model's name, not its letter, is what a reader is looking for. */
-.seat .who {
-  font-family: var(--font-body);
-  font-size: 0.92rem;
-  fill: var(--text);
-  text-anchor: middle;
-  pointer-events: none;
+/* One avatar treatment, used by the header, every message and the plan picker — the
+   same letter in the same colour in all three, which is what makes them one person. */
+.avatar {
+  grid-area: avatar;
+  font-weight: 600;
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  display: grid;
+  place-items: center;
+  font-size: var(--t-meta);
+  font-weight: 600;
+  line-height: 1;
 }
-.seat .sub {
-  font-size: 0.78rem;
-  fill: var(--text-faint);
-  text-anchor: middle;
-  pointer-events: none;
-}
-.seat .sub.ready { fill: var(--ready); }
-.seat .sub.open { fill: var(--continue); }
-.seat .sub.now { fill: var(--live); }
-
-.seat.dropped { opacity: 0.4; }
-.seat.dropped .plate { stroke-dasharray: 3 3; }
-.seat.chair .plate { fill: var(--bg-4); stroke: var(--rule-strong); }
-.seat.chair .initial { fill: var(--text-2); font-size: 0.8rem; }
+.avatar.dim { color: var(--text-faint); border-color: var(--rule); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .seat.speaking .halo { animation: orbit 9s linear infinite; }
-  .seat .ring-done { transition: stroke-dashoffset 0.5s ease-out; }
+  .participants .who.speaking .avatar { animation: pulse 1.8s ease-in-out infinite; }
 }
-.seat .halo { fill: none; stroke: currentColor; stroke-width: 1; opacity: 0.4; }
-@keyframes orbit { to { transform: rotate(360deg); } }
 
-/* What is happening, in the middle of the table, in as few words as it takes. */
-.table-centre {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 42%;
+@media (max-width: 900px) { .participants { padding-left: 1rem; padding-right: 1rem; } }
+
+/* ── the discussion, as a conversation ──────────────────
+
+   A council is a group chat: turns are messages, a chair instruction is you speaking
+   into the room, a verdict is what somebody left the conversation on. It was being
+   rendered as a log file — eight essays stacked in order of arrival, with no way to
+   tell who was answering whom.  */
+
+.chat { padding-bottom: 1rem; }
+.chat-empty {
+  max-width: var(--measure);
+  margin: 2rem auto;
   text-align: center;
-  pointer-events: none;
-}
-.table-centre .where {
-  font-family: var(--font-display);
-  font-size: var(--t-lead);
-  line-height: 1.2;
-  color: var(--text-strong);
-}
-.table-centre .what {
-  margin-top: 0.3rem;
-  font-size: var(--t-meta);
   color: var(--text-2);
-  line-height: 1.45;
+  font-size: var(--t-meta);
+  line-height: 1.6;
 }
-.table-centre .doing {
-  margin-top: 0.35rem;
+
+/* The divider a chat puts between days. Here it is the round — the only structure
+   this conversation has. */
+.chat-day {
+  display: block;
+  width: fit-content;
+  margin: 1.6rem auto 1.1rem;
+  padding: 0.2rem 0.85rem;
+  border-radius: 999px;
+  background: var(--bg-3);
+  border: 1px solid var(--rule-soft);
+  font-size: var(--t-micro);
+  color: var(--text-2);
+  letter-spacing: 0.02em;
+}
+
+.msg { display: flex; gap: 0.6rem; margin-bottom: 0.7rem; align-items: flex-start; }
+.msg .avatar { margin-top: 0.35rem; }
+
+/* Yours on the right, theirs on the left — the one piece of geometry a chat uses to
+   say "this is not one of them, this is you". */
+.msg.mine { justify-content: flex-end; }
+.msg.mine .bubble {
+  background: var(--wash-accent-2);
+  border-color: var(--accent);
+  border-bottom-right-radius: var(--r-sm);
+  border-bottom-left-radius: var(--r-lg);
+}
+.msg.mine .from { color: var(--accent); }
+
+.bubble {
+  position: relative;
+  /* The avatar sits beside it in the same flex row, so `100%` of the row is 2.6rem
+     more than the bubble may actually have. */
+  min-width: 0;
+  max-width: min(var(--measure), calc(100% - 2.6rem));
+  background: var(--bg-2);
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r-lg);
+  border-bottom-left-radius: var(--r-sm);
+  padding: 0.55rem 0.85rem 0.4rem;
+  box-shadow: var(--shadow);
+}
+.bubble.speaking { border-color: var(--live); }
+.bubble.failed { border-color: var(--danger); border-style: dashed; }
+.bubble.raw { border-style: dashed; }
+.bubble .from {
+  font-size: var(--t-meta);
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+.bubble .raw-note { font-size: var(--t-micro); color: var(--continue); margin-bottom: 0.3rem; }
+.bubble .md p:first-child { margin-top: 0; }
+.bubble .md p:last-child { margin-bottom: 0; }
+.bubble .md > :last-child { margin-bottom: 0; }
+
+/* The stamp a chat puts in the corner of a bubble: when, how much, and the ticks. */
+.bubble .stamp {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  margin-top: 0.3rem;
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   color: var(--text-faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
+.bubble .tick { font-family: var(--font-body); letter-spacing: -0.12em; }
 
-@media (max-width: 720px) {
-  .seat .sub { display: none; }
-  .table-centre { width: 56%; }
-  .table-centre .where { font-size: var(--t-lead); }
+/* The panelist's own one-line reason. The envelope has always carried this separately
+   from the argument, and the old screen showed the whole argument by default and hid
+   this underneath it in small grey text. */
+.verdict-note {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+  border-left: 3px solid currentColor;
+  font-size: var(--t-meta);
+  line-height: 1.5;
+  color: var(--text-2);
+  /* A panelist writes its own reason, so it can contain an identifier longer than a
+     narrow column — `out_bytes/err_bytes/written/MAX_CALL_LOG_BYTES` is a real one. */
+  overflow-wrap: anywhere;
+}
+.verdict-note b { display: block; font-weight: 600; font-size: var(--t-micro); }
+.verdict-note.verdict-READY { color: var(--ready); }
+.verdict-note.verdict-CONTINUE { color: var(--continue); }
+.verdict-note.verdict-none { color: var(--text-faint); }
+
+/* Collapsed to about a screenful, with the text fading out rather than being cut, so
+   it is obvious there is more rather than looking like the message simply ended. */
+.clamp {
+  position: relative;
+  max-height: 12rem;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 8rem, transparent);
+  mask-image: linear-gradient(180deg, #000 8rem, transparent);
+}
+.bubble .more {
+  margin-top: 0.2rem;
+  padding: 0.15rem 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: var(--t-meta);
+}
+.bubble .more:hover:not(:disabled) { background: none; border-color: transparent; text-decoration: underline; }
+
+.bubble.typing { min-width: 9rem; }
+.dots { display: flex; gap: 0.28rem; padding: 0.35rem 0 0.15rem; }
+.dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dots i { animation: bounce 1.25s ease-in-out infinite; }
+  .dots i:nth-child(2) { animation-delay: 0.16s; }
+  .dots i:nth-child(3) { animation-delay: 0.32s; }
+}
+@keyframes bounce {
+  0%, 60%, 100% { opacity: 0.32; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
 }
 
 .verdict-READY { color: var(--ready); }
 .verdict-CONTINUE { color: var(--continue); }
 .verdict-none { color: var(--text-faint); }
+
+/* ── their plans ────────────────────────────────
+
+   What each panelist wrote before anyone had spoken. Its own tab: these are the
+   independent plans, which is the whole reason the tool exists, and they were
+   reachable only through a third-level tab inside a drawer.  */
+
+.plan-picker {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 1.2rem;
+}
+.plan-tab {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'avatar who' 'avatar sub';
+  gap: 0 0.55rem;
+  align-items: center;
+  text-align: left;
+  padding: 0.45rem 0.8rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--text-faint);
+}
+.plan-tab:hover:not(:disabled) { background: var(--bg-2); border-color: transparent; }
+.plan-tab .who { grid-area: who; font-size: var(--t-meta); }
+.plan-tab .sub { grid-area: sub; font-family: var(--font-mono); font-size: var(--t-micro); }
+.plan-tab.active { color: var(--text-strong); font-weight: 600; }
+.plan-tab.active .sub { font-weight: 400; color: var(--text-faint); }
+.plan-body { max-width: calc(var(--measure) + 2rem); }
 
 /* ── the inspector ──────────────────────────────────────
 
@@ -668,7 +810,7 @@ label { display: block; }
   gap: 0.7rem;
   flex-wrap: wrap;
 }
-.drawer-head .label { font-family: var(--font-display); font-size: 1.3rem; letter-spacing: 0.06em; }
+.drawer-head .label { font-size: var(--t-head); font-weight: 600; letter-spacing: -0.01em; }
 .drawer-head .real { font-family: var(--font-mono); font-size: var(--t-micro); color: var(--text-faint); }
 .drawer-head .state { margin-left: auto; font-size: var(--t-meta); font-variant: small-caps; letter-spacing: 0.04em; }
 .drawer-tabs { display: flex; gap: 0; padding: 0 1.2rem; border-bottom: 1px solid var(--rule); }
@@ -729,7 +871,7 @@ label { display: block; }
   background: var(--bg-3);
   border: 1px solid var(--rule);
   border-bottom: 0;
-  border-radius: 3px 3px 0 0;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
   padding: 0.7rem 0.9rem;
   font-size: var(--t-meta);
 }
@@ -752,17 +894,18 @@ label { display: block; }
   word-break: break-word;
   background: var(--bg-2);
   border: 1px solid var(--rule);
-  border-radius: 0 0 3px 3px;
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
   max-height: 38rem;
   overflow-y: auto;
   color: var(--text);
 }
 
-/* ── debate ────────────────────────────────────────────── */
+/* ── section headings ──────────────────────────────────── */
 
 .round-head {
-  font-family: var(--font-display);
   font-size: var(--t-head);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text-strong);
   padding-bottom: 0.35rem;
   margin: 2.2rem 0 1rem;
@@ -776,7 +919,7 @@ label { display: block; }
   background: var(--bg-2);
   border: 1px solid var(--rule-soft);
   border-left: 3px solid var(--rule-strong);
-  border-radius: 3px;
+  border-radius: var(--r-sm);
   padding: 0.85rem 1.2rem 0.9rem;
   margin-bottom: 1rem;
 }
@@ -800,7 +943,7 @@ label { display: block; }
   border-bottom: 1px solid var(--rule-soft);
   flex-wrap: wrap;
 }
-.turn-head .label { font-family: var(--font-display); font-size: var(--t-lead); }
+.turn-head .label { font-size: var(--t-lead); font-weight: 600; }
 .turn-head .meta {
   font-family: var(--font-mono);
   font-size: var(--t-micro);
@@ -844,9 +987,8 @@ label { display: block; }
 /* ── markdown ───────────────────────────────────────────── */
 
 .md h1, .md h2, .md h3, .md h4 {
-  font-family: var(--font-display);
-  font-weight: 400;
-  letter-spacing: 0.01em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   margin: 1.3rem 0 0.5rem;
   line-height: 1.25;
 }
@@ -876,7 +1018,7 @@ label { display: block; }
   max-width: 100%;
   background: var(--bg-3);
   border: 1px solid var(--rule);
-  border-radius: 3px;
+  border-radius: var(--r-sm);
   padding: 0.8rem 0.9rem;
   overflow-x: auto;
   margin: 0.8rem 0;
@@ -1015,7 +1157,7 @@ label { display: block; }
 .kv dd { color: var(--text-2); word-break: break-all; }
 
 .handoff {
-  border: 1px solid var(--continue);
+  border: 1px solid var(--accent);
   padding: 1rem 1.1rem;
   margin-bottom: 1.5rem;
   background: var(--wash-accent);
@@ -1062,7 +1204,7 @@ label { display: block; }
 /* Opaque, not a wash: the wash composited the mode name down to 4.24:1 — and only
    on the card the user had chosen. */
 .choice.active { border-color: var(--accent); background: var(--bg-3); }
-.choice.active b { color: var(--continue); }
+.choice.active b { color: var(--accent); }
 
 /* A setting that is a sentence until you want to change it. */
 .disclosure { border: 1px solid var(--rule); background: var(--bg-2); margin-bottom: 0.6rem; }
@@ -1120,7 +1262,7 @@ button.icon:hover:not(:disabled) { color: var(--text); border-color: var(--rule)
 /* ── home ───────────────────────────────────────────────── */
 
 .hero { max-width: 44rem; margin-bottom: 2.4rem; }
-.hero h2 { font-family: var(--font-display); font-size: 2.1rem; font-weight: 400; letter-spacing: 0.01em; }
+.hero h2 { font-size: 2rem; font-weight: 650; letter-spacing: -0.025em; }
 .hero p { color: var(--text-2); margin: 0.7rem 0 1.4rem; }
 
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: 0.7rem; }
@@ -1168,7 +1310,7 @@ button.icon:hover:not(:disabled) { color: var(--text); border-color: var(--rule)
   max-width: 34rem;
   width: 100%;
 }
-.dialog h3 { font-family: var(--font-display); font-size: 1.2rem; font-weight: 400; }
+.dialog h3 { font-size: var(--t-head); font-weight: 600; }
 .dialog p { font-size: 0.88rem; margin-top: 0.6rem; }
 .dialog .cmd { margin-top: 0.7rem; }
 .dialog code {

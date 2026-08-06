@@ -195,25 +195,26 @@ The window opens on every council on the machine, newest first, each with the ti
 ran — and a delete, because councils are cheap to start and their tasks rhyme. Opening
 one gives you three tabs:
 
-- **the session** — the panel around a table, whoever convened it at the head. Who is
-  speaking is the seat with a ring turning around it; who has already spoken this round
-  is the arc of the rim in front of them, filling as the round closes. The middle says
-  in one sentence what is happening. Under it, the discussion itself, and the controls:
-  pause, stop, raise the round limit, wrap up early, and say something to the panel
-  mid-argument.
+- **the discussion** — the debate as the group conversation it is. Panelists on the
+  left, each with its own colour; you and the main agent on the right, because a chair
+  message is an instruction into the room rather than one of the arguments. Rounds are
+  the divider chips a chat puts between days, a long turn collapses to its opening and
+  the one-line reason its author wrote, and whoever has the floor is shown typing —
+  with the file it is reading. Controls sit in the header: pause, stop, raise the round
+  limit, wrap up early. The composer at the bottom talks to the whole panel.
+- **their plans** — one tab per panelist for the independent plans of Phase 1. Only on
+  the modes that have one.
 - **digest** — the synthesis, and the `/council-apply` line that hands it to Claude Code.
 - **what it was given** — the task verbatim, the brief and the proposal if there were
   any, and every setting this council is running under, including ones raised mid-run.
 
-Clicking a seat opens that panelist and nothing else: the exact prompts it was sent,
-the files it opened, what it said between them, what it replied — plus **console**, the
-raw output of each of its harness processes, and its independent plan where it wrote
-one. Skip and drop live there too, next to the panelist they apply to.
+The strip along the top is who is in the conversation: the convener first — the main
+agent when `/council` convened it, you when you did — then every panelist with where it
+stands. Clicking one opens it and nothing else: the exact prompts it was sent, the files
+it opened, what it said between them, what it replied, plus **console**, the raw output
+of each of its harness processes. Skip and drop live there too.
 
-The head of the table is whoever set the task: the main agent when `/council` convened
-it, you when you did. It opens the task and the brief.
-
-Lamplight by default, paper behind the ☀/☾ in the corner; the choice sticks.
+Dark by default, light behind the ☀/☾ in the corner; the choice sticks.
 
 ## The CLI
 

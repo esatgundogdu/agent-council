@@ -3,16 +3,21 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { clock, duration, tokens as fmtTokens } from '../format'
 import { useSession } from '../useSession'
-import { Debate } from './Debate'
+import { Chat } from './Chat'
 import { Inspector } from './Inspector'
 import { Markdown } from './Markdown'
-import { Table } from './Table'
+import { Participants } from './Participants'
+import { Plans } from './Plans'
 import type { SessionState } from '../types'
 
-type Tab = 'session' | 'digest' | 'setup'
+type Tab = 'chat' | 'plans' | 'digest' | 'setup'
+
+//: The modes that open with a planning phase, and so can have plans to show.
+const PLANNING_MODES = ['independent', 'hybrid']
 
 const TAB_LABEL: Record<Tab, string> = {
-  session: 'the session',
+  chat: 'the discussion',
+  plans: 'their plans',
   digest: 'digest',
   setup: 'what it was given',
 }
@@ -30,7 +35,7 @@ const HEALTH_TONE: Record<string, string> = {
 
 export function SessionView({ id, onGone }: { id: string; onGone: () => void }) {
   const { state, error, reload } = useSession(id)
-  const [tab, setTab] = useState<Tab>('session')
+  const [tab, setTab] = useState<Tab>('chat')
   const [inspecting, setInspecting] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [acted, setActed] = useState<string | null>(null)
@@ -148,8 +153,20 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
         )}
       </div>
 
+      {/* Who is in the conversation, along the top of it — the group header a chat has,
+          and the job the round table was doing in three times the height. */}
+      <Participants
+        state={state}
+        onInspect={setInspecting}
+        onChair={() => setTab('setup')}
+      />
+
       <div className="tabs">
-        {(Object.keys(TAB_LABEL) as Tab[]).map((name) => (
+        {(Object.keys(TAB_LABEL) as Tab[])
+          // `consult` and `review` have no planning phase, so on those — which is most
+          // sessions — this tab could only ever say that it is empty.
+          .filter((name) => name !== 'plans' || PLANNING_MODES.includes(session.mode))
+          .map((name) => (
           <button
             key={name}
             className={`tab${tab === name ? ' active' : ''}`}
@@ -157,8 +174,11 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
           >
             {TAB_LABEL[name]}
             {name === 'digest' && state.has_digest && <span className="pip" />}
+            {name === 'plans' && state.panel.some((p) => p.has_plan) && (
+              <span className="count">{state.panel.filter((p) => p.has_plan).length}</span>
+            )}
           </button>
-        ))}
+          ))}
       </div>
 
       <div className="page">
@@ -176,12 +196,11 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
         {/* The digest is the reason the council was convened, and on a long run the
             user is not watching when it lands. A dot on a tab is not enough of an
             ending. */}
-        {tab === 'session' && (
+        {tab === 'chat' && (
           <>
-            <Table state={state} onInspect={setInspecting} onChair={() => setTab('setup')} />
             {/* One line, where the banner used to be a 150px box repeating the state
-                the header chip, the session list and the table centre had already
-                given. What it adds that they do not is how the run *ended*. */}
+                the header chip and the session list had already given. What it adds
+                that they do not is how the run *ended*. */}
             {!running && state.has_digest && (
               <div className={`ending ${outcome(state)}`}>
                 {summarise(state.panel, noCrossReview(state))}
@@ -189,7 +208,7 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
               </div>
             )}
             <Notices state={state} />
-            <Debate
+            <Chat
               rounds={state.rounds}
               phase={status.phase}
               mode={session.mode}
@@ -197,6 +216,10 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
             />
             {running && <Chair onSend={(text) => control('chair', { text })} />}
           </>
+        )}
+
+        {tab === 'plans' && (
+          <Plans sessionId={id} panel={state.panel} mode={session.mode} />
         )}
 
         {tab === 'digest' && <Digest state={state} />}
