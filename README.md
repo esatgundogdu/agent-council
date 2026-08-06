@@ -213,7 +213,7 @@ one. Skip and drop live there too, next to the panelist they apply to.
 The head of the table is whoever set the task: the main agent when `/council` convened
 it, you when you did. It opens the task and the brief.
 
-Paper by default, lamplight behind the ☀/☾ in the corner; the choice sticks.
+Lamplight by default, paper behind the ☀/☾ in the corner; the choice sticks.
 
 ## The CLI
 

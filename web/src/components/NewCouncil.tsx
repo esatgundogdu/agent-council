@@ -332,18 +332,26 @@ export function NewCouncil({ onStarted }: { onStarted: (id: string) => void }) {
         </div>
       )}
 
+      {/* On its own line, above the button rather than beside it. A rehearsal toggle
+          sitting twenty pixels from the control that spends a subscription is a
+          mis-click away from either mistake — running for free when you meant to run,
+          or the reverse. */}
+      <label className="mock-toggle">
+        <input
+          type="checkbox"
+          checked={mockPanel}
+          onChange={(e) => setMockPanel(e.target.checked)}
+        />
+        Rehearse with a scripted panel — no model is called and nothing is spent
+      </label>
+
       <div className="submit">
         <button className="primary" onClick={submit} disabled={busy}>
-          {busy ? 'convening…' : 'Convene the council'}
+          {busy ? 'convening…' : mockPanel ? 'Rehearse' : 'Convene the council'}
         </button>
-        <label className="mock-toggle">
-          <input
-            type="checkbox"
-            checked={mockPanel}
-            onChange={(e) => setMockPanel(e.target.checked)}
-          />
-          mock panel — scripted replies, no model is called and nothing is spent
-        </label>
+        {/* Nothing else here. What the run costs is two rows up, in Panel and Limits,
+            where it can also be changed — repeating it under the button would be the
+            third copy of one fact on one screen. */}
       </div>
     </div>
   )

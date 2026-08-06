@@ -4,18 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Council</title>
-    <!-- Before the first paint, so somebody who chose the dark theme does not get a
-         full sheet of white paper on every reload. React sets the same attribute a
-         moment later; this only wins the race. -->
+    <!-- Before the first paint, so nobody gets a flash of the theme they did not
+         choose on every reload. React sets the same attribute a moment later; this
+         only wins the race. -->
     <script>
       try {
-        if (localStorage.getItem('council.theme') === 'dark') {
-          document.documentElement.dataset.theme = 'dark'
-        }
-      } catch (e) {}
+        document.documentElement.dataset.theme =
+          localStorage.getItem('council.theme') === 'light' ? 'light' : 'dark'
+      } catch (e) {
+        document.documentElement.dataset.theme = 'dark'
+      }
     </script>
-    <script type="module" crossorigin src="/assets/index-D9_adgWL.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-C1kTvLi_.css">
+    <style>
+      /* The default has to be on the element before the stylesheet loads too, or the
+         page paints in `:root`'s palette — paper — for one frame. */
+      :root:not([data-theme]) { color-scheme: dark; background: #15110e; }
+    </style>
+    <script type="module" crossorigin src="/assets/index-Bcgk7lbf.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-MeOl8FOk.css">
   </head>
   <body>
     <div id="root"></div>

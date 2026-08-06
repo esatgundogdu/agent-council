@@ -12,17 +12,17 @@ type Route = { name: 'home' } | { name: 'new' } | { name: 'session'; id: string 
 const THEME_KEY = 'council.theme'
 
 /**
- * Paper unless this browser has said otherwise.
+ * Lamplight unless this browser has said otherwise.
  *
  * Deliberately not `prefers-color-scheme`: the default is a decision about what this
- * application looks like, and a machine set to dark would otherwise never see it.
- * One click changes it, and the choice sticks.
+ * application looks like rather than about the machine it is on. Paper is still one
+ * click away in the corner, and whichever is chosen sticks.
  */
 function storedTheme(): Theme {
   try {
-    return window.localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'
+    return window.localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark'
   } catch {
-    return 'light' // private mode, or storage disabled
+    return 'dark' // private mode, or storage disabled
   }
 }
 
