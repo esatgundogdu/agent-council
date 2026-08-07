@@ -177,7 +177,9 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
           ))}
       </div>
 
-      <div className="page">
+      {/* `tab-page`: the same page, one measure wider. See the rule for why the
+          transcript wants a longer line than the rest of the application does. */}
+      <div className="page tab-page">
         {acted && <div className="toast">{acted}</div>}
         {problem && <div className="error-banner">{problem}</div>}
         {status.error && <div className="error-banner">{status.error}</div>}

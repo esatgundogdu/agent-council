@@ -422,6 +422,14 @@ label { display: block; }
    in a 38rem column inside it, so the drawing and the text it belongs to were centred
    on two different verticals and the table read as an illustration dropped in. */
 .page { padding: 1.2rem 2rem 4rem; max-width: calc(var(--measure) + 10rem); width: 100%; }
+/* The session's tabs get a longer line than the rest of the application — about a
+   third longer. 68ch is the right measure for prose a person wrote to be read; a
+   council transcript is prose with file paths, identifiers and envelope quotes threaded
+   through it, and at 68ch those wrap in the middle and the argument gets chopped into
+   short ragged lines. Redefining the variable here is the whole change: the bubbles,
+   the plan bodies, the digest markdown and the turn bodies all measure themselves
+   against it, so they widen together and nothing else in the application moves. */
+.page.tab-page { --measure: 88ch; }
 .page > .turn,
 .page > .round-head,
 .page > .ending,

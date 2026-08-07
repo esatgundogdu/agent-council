@@ -150,6 +150,31 @@ const drawer = await ev("JSON.stringify({ opensInspector: Boolean(document.query
 Object.assign(out.seats, JSON.parse(drawer.result.value))
 await ev("document.querySelector('.drawer-scrim')?.click()")
 
+// The session's tabs read at a longer line than the rest of the application, on purpose.
+// Measured against the application's own measure rather than asserted, so the ratio is a
+// number somebody can disagree with rather than a constant buried in a stylesheet.
+const measure = await ev(`(() => {
+  const page = document.querySelector('.tab-page')
+  if (!page) return JSON.stringify({ skipped: 'no transcript on this page' })
+  // The variable itself, through a probe. Measuring a message instead reports its own
+  // text width when it is short, and reading maxWidth off the bubble hands back the
+  // unresolved min() expression rather than a number: both quietly say 'no change'.
+  const probe = document.createElement('div')
+  probe.style.cssText = 'width: var(--measure); position: absolute; visibility: hidden'
+  page.appendChild(probe)
+  const read = () => probe.getBoundingClientRect().width
+  const wide = read()
+  page.style.setProperty('--measure', '68ch')
+  const base = read()
+  page.style.removeProperty('--measure')
+  probe.remove()
+  return JSON.stringify({
+    px: Math.round(wide),
+    widerBy: Math.round((wide / base - 1) * 100),
+  })
+})()`)
+out.measure = JSON.parse(measure.result.value)
+
 // A canvas has no hover of its own: the pointer stays an arrow over a figure that is
 // perfectly clickable, so the only way to find out is to click and see. The scene has to
 // supply what the browser would have given a button for free.
