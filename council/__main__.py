@@ -20,6 +20,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -50,6 +51,12 @@ from .server.daemon import DEFAULT_PORT, DaemonError
 EXIT_OK = 0
 EXIT_PANEL = 2
 EXIT_CONFIG = 3
+# `wait --timeout` ran out with the council still arguing. Distinct from every other
+# code because the caller's next move is different: not "it broke", but "ask me again".
+EXIT_TIMEOUT = 4
+
+# How long to leave a dropped event stream alone before picking it up again.
+RECONNECT_SECONDS = 2.0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -97,6 +104,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     watch = sub.add_parser("watch", help="follow a running session in this terminal")
     watch.add_argument("session", nargs="?", help="session id (default: the newest)")
+
+    wait = sub.add_parser(
+        "wait",
+        help="block until a session ends, quietly; exit 0 done, 2 failed, 4 timed out",
+    )
+    wait.add_argument("session", nargs="?", help="session id (default: the newest)")
+    wait.add_argument(
+        "--timeout",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help="give up waiting after this long and exit 4. 0 (default) waits forever.",
+    )
 
     status = sub.add_parser("status", help="one-shot progress report")
     status.add_argument("session", nargs="?", help="session id (default: the newest)")
@@ -328,29 +348,85 @@ def cmd_watch(args) -> int:
     return _follow(client, session_id)
 
 
-def _follow(client: Client, session_id: str) -> int:
-    """Turn the event stream into the same progress lines a local run prints."""
-    mode = ""
+def cmd_wait(args) -> int:
+    """Block until a session is over, and say which way it went in the exit code.
+
+    `watch` is for a person reading a terminal. This is for a program: one line out, and
+    an exit code another process can branch on — which is what lets an agent hand the
+    waiting to its own job control and be woken when the council lands, instead of
+    sleeping and polling and hoping it asks again at the right moment.
+    """
     try:
-        for record in client.events(session_id):
-            if record.get("event") == "session_created":
-                mode = str(record.get("mode") or "")
-            line = _describe(record, mode)
-            if line:
-                print(line, flush=True)
+        client = Client.connect(start=False)
+        session_id = _resolve(client, args.session)
     except DaemonError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_CONFIG
-    except KeyboardInterrupt:
-        print("\n(detached — the session keeps running)", file=sys.stderr)
-        return EXIT_OK
+    return _await(client, session_id, describe=False, deadline=args.timeout)
 
-    state = client.session(session_id)["status"]
-    if state["state"] == "failed":
-        print(f"\ncouncil failed: {state.get('error')}", file=sys.stderr)
-        return EXIT_PANEL
-    print(f"\nDIGEST: {Path(client.session(session_id)['session']['dir']) / 'digest.md'}")
-    return EXIT_OK
+
+def _follow(client: Client, session_id: str) -> int:
+    """Turn the event stream into the same progress lines a local run prints."""
+    return _await(client, session_id, describe=True, deadline=0.0)
+
+
+def _await(client: Client, session_id: str, describe: bool, deadline: float) -> int:
+    """Follow a session to its end, surviving a stream that drops on the way.
+
+    The generator ending is not proof the session ended: a daemon restart, a proxy timing
+    out and a laptop lid closing all end it exactly the same way. So the stream stopping
+    only prompts the question, and the session's own state answers it. Reconnecting is
+    free of duplicates because the log is append-only and the server replays `from_seq`.
+
+    This matters much more here than it reads. As long as a person is watching the lines
+    go by, a stream that quietly gives up costs them a re-run. The moment the exit is a
+    signal — an agent waiting to be woken — the same bug reports a council as finished
+    while it is still arguing, and the digest that gets read is the one that is not
+    written yet.
+    """
+    mode = ""
+    seq = 0
+    started = time.monotonic()
+    while True:
+        try:
+            for record in client.events(session_id, from_seq=seq):
+                seq = max(seq, int(record.get("seq") or 0))
+                if record.get("event") == "session_created":
+                    mode = str(record.get("mode") or "")
+                if describe:
+                    line = _describe(record, mode)
+                    if line:
+                        print(line, flush=True)
+        except DaemonError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_CONFIG
+        except KeyboardInterrupt:
+            print("\n(detached — the session keeps running)", file=sys.stderr)
+            return EXIT_OK
+
+        try:
+            state = client.session(session_id)["status"]
+        except DaemonError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_CONFIG
+
+        if state["state"] == "failed":
+            print(f"\ncouncil failed: {state.get('error')}", file=sys.stderr)
+            return EXIT_PANEL
+        if state["state"] != "running":
+            digest = Path(client.session(session_id)["session"]["dir"]) / "digest.md"
+            print(f"\nDIGEST: {digest}" if describe else f"DIGEST: {digest}")
+            return EXIT_OK
+
+        # Still running, so the stream dropped rather than ended. Pick it up where it
+        # left off — but not in a hot loop, and not forever if the caller set a limit.
+        if deadline and time.monotonic() - started > deadline:
+            print(
+                f"still running after {deadline:.0f}s: {session_id}",
+                file=sys.stderr,
+            )
+            return EXIT_TIMEOUT
+        time.sleep(RECONNECT_SECONDS)
 
 
 def _describe(record: dict, mode: str = "") -> str:
@@ -741,6 +817,7 @@ COMMANDS = {
     "down": cmd_down,
     "start": cmd_start,
     "watch": cmd_watch,
+    "wait": cmd_wait,
     "status": cmd_status,
     "digest": cmd_digest,
     "sessions": cmd_sessions,

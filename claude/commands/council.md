@@ -176,19 +176,36 @@ about, which is the point, and several megabytes of event log. If that project's
 without asking: it is their repository, and a line appearing in `.gitignore` that they
 did not write is the same rudeness as the files it hides.
 
-Timing follows the round count, not the mode:
+Timing follows the round count, not the mode: `--max-rounds 1` is **3–8 minutes**, the
+default 2–5 rounds is **15–45 minutes**. Either way, do not sit and poll for it.
 
-- `--max-rounds 1` — **3–8 minutes.** One parallel round. Add `--follow` and report when
-  it lands; do not poll as well.
-- the default 2–5 rounds — **15–45 minutes.** Return immediately and poll:
+**Hand the waiting to your job control.** Start the council, tell the user it is running
+and where to watch it, and then run this as a *background* task:
 
 ```
-council status <id> --json
+council wait <id>
 ```
 
-Report each phase and round change as it happens; do not sit silent for 40 minutes, and
-do not poll faster than every ~30s. `council watch <id>` streams the same lines if you
-would rather block.
+It blocks until the council is actually over and then exits, which is the thing your
+harness watches for: you get woken when the digest lands, and you spend nothing at all
+in between. That is the whole reason it exists — polling makes you guess the interval,
+and every guess is either a wasted turn or a user sitting in silence.
+
+The exit code is the answer, so branch on it rather than re-reading the state:
+
+| code | meaning | what to do |
+|---|---|---|
+| 0 | finished; the digest path is on stdout | go to step 9 |
+| 2 | the council failed | say what broke; do not read a digest |
+| 4 | `--timeout` ran out, still arguing | start another `wait`, or ask the user |
+
+Use `--timeout SECONDS` only if you want a check-in partway; without it, it waits as long
+as the council takes. If your harness cannot run a background task at all, fall back to
+`council status <id> --json` no faster than every ~30s — and say so, because that is the
+version where the user waits on your polling rather than on the panel.
+
+`council watch <id>` is the same wait with the progress lines printed. Use it when the
+user is reading along; use `wait` when you are.
 
 Add `--mock` to rehearse the whole pipeline with scripted panelists — no model is called
 and nothing is spent.

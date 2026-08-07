@@ -243,6 +243,7 @@ Everything the UI does, the CLI does, because both are clients of the same API.
 | `council start --task F --project-dir D` | convene; returns a session id at once |
 | `council start … --follow` | …and stream progress until it ends |
 | `council watch [id]` | follow a running session in this terminal |
+| `council wait [id] [--timeout S]` | block until it ends, quietly. 0 done · 2 failed · 4 timed out |
 | `council status [id] [--json]` | one-shot progress report |
 | `council sessions` | every session, across every project |
 | `council digest [id]` | print a finished session's digest |
@@ -252,6 +253,13 @@ Everything the UI does, the CLI does, because both are clients of the same API.
 
 `council run` is the escape hatch: no daemon, no port, nothing to watch. Use it in CI
 and scripts. Everything else goes through the control plane.
+
+`council wait` is the one to reach for from another program. `watch` narrates for a
+person; `wait` says nothing but the digest path and puts its answer in the exit code, so
+an agent can hand it to its own job control and be woken when the council lands instead
+of guessing a polling interval. It survives a dropped event stream, too — a stream that
+*stops* and a stream that *ends* look identical from the outside, and only the session's
+own state is allowed to say which one happened.
 
 ### Choosing the panel
 
