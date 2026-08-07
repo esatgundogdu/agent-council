@@ -1627,3 +1627,27 @@ button.icon:hover:not(:disabled) { color: var(--text); border-color: var(--rule)
 .gone > div { max-width: 30rem; }
 .gone h3 { font-size: var(--t-title); font-weight: 600; }
 .gone p { margin-top: 0.7rem; font-size: 0.9rem; }
+
+/* The way back to the live turn, for a reader who has scrolled away from it.
+
+   `sticky` with `bottom`, sitting at the end of the chat: while the conversation
+   continues below the fold it pins itself to the bottom of the viewport, and once the
+   reader is back at the end it settles into the flow and scrolls away with everything
+   else. No fixed positioning, so it never has to know where the sidebar is. */
+.follow-again {
+  position: sticky;
+  bottom: 1.1rem;
+  z-index: 3;
+  display: block;
+  margin: 0.6rem auto 0;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  background: var(--bg-2);
+  box-shadow: var(--shadow);
+  color: var(--text-2);
+  font-size: var(--t-meta);
+  cursor: pointer;
+}
+.follow-again:hover { color: var(--text); border-color: var(--accent); background: var(--bg-3); }
+.follow-again:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

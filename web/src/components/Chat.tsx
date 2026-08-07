@@ -29,20 +29,14 @@ export function Chat({
   panel: Panelist[]
 }) {
   const consulting = mode === 'consult'
-  const bottom = useRef<HTMLDivElement>(null)
+  const root = useRef<HTMLDivElement>(null)
   const streaming = rounds.some((r) => r.turns.some((t) => t.streaming))
   const typing = panel.filter((p) => p.speaking && !hasOpenTurn(rounds, p.label))
-
-  useEffect(() => {
-    if (!streaming) return
-    // Follow the live turn, but only while one is running: yanking the page down while
-    // somebody is reading an earlier round would be worse than not following.
-    bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [rounds, streaming])
+  const follow = useFollow(root, streaming)
 
   if (!rounds.length) {
     return (
-      <div className="chat">
+      <div className="chat" ref={root}>
         <div className="chat-empty">
           {consulting
             ? 'Every panelist is reading the repository and writing its own first answer. They are not talking to each other yet — that starts in round 2.'
@@ -53,13 +47,13 @@ export function Chat({
         {typing.map((member) => (
           <Typing key={member.label} member={member} tint={tintOf(panel, member.label)} />
         ))}
-        <div ref={bottom} />
+        {follow.adrift && <FollowAgain onClick={follow.resume} />}
       </div>
     )
   }
 
   return (
-    <div className="chat">
+    <div className="chat" ref={root}>
       {rounds.map((round) => (
         <section key={round.round}>
           {/* The chip a chat puts between days. Here it is the round, which is the only
@@ -83,8 +77,120 @@ export function Chat({
       {typing.map((member) => (
         <Typing key={member.label} member={member} tint={tintOf(panel, member.label)} />
       ))}
-      <div ref={bottom} />
+      {follow.adrift && <FollowAgain onClick={follow.resume} />}
     </div>
+  )
+}
+
+/**
+ * Follow the live turn — but only for a reader who is already at the bottom.
+ *
+ * The old rule was "a turn is streaming, therefore scroll", which is a rule about the
+ * council rather than about the person reading it: scrolling up to re-read an earlier
+ * round pulled you straight back down on the next token, over and over, and there was
+ * no way to opt out short of waiting for the panel to finish.
+ *
+ * Now scrolling away *is* the opt-out. Leave the bottom and nothing moves the page
+ * again; come back to it and following resumes on its own, because being at the bottom
+ * of a live conversation is a request to stay there. The pill in between is the only
+ * new affordance, and it exists so the behaviour is discoverable rather than magic.
+ */
+function useFollow(root: React.RefObject<HTMLDivElement | null>, streaming: boolean) {
+  const stick = useRef(true)
+  const scroller = useRef<HTMLElement | null>(null)
+  //: Where the last scroll *we* asked for left the page. Anything else is the reader.
+  const put = useRef(0)
+  const [adrift, setAdrift] = useState(false)
+
+  useEffect(() => {
+    const el = scrollerOf(root.current)
+    scroller.current = el
+    const target: EventTarget = el === document.scrollingElement ? window : el
+    // Every scroll is read the same way, by where it ended up. There is no attempt to
+    // tell our scrolls from the reader's, and that is deliberate: two earlier versions
+    // tried, and both reintroduced the bug. Ignoring anything within 900ms of one of
+    // ours never stopped ignoring, because following scrolls on every token. Ignoring
+    // the intermediate frames of a smooth scroll left the flag stuck on when the
+    // animation landed short — which it does, because the page grows underneath it.
+    const onScroll = () => {
+      const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM
+      stick.current = near
+      setAdrift(!near)
+    }
+    target.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => target.removeEventListener('scroll', onScroll)
+  }, [root])
+
+  /**
+   * The bottom of the scroller, not the bottom of the conversation.
+   *
+   * These are not the same place: below the last message sit the chat's padding and the
+   * page's, about 170px of it, and `scrollIntoView` on a marker at the end of the
+   * messages stops there — correctly, it was asked to show the marker. But that left the
+   * page a padding's-worth from the bottom, which is further than the threshold below,
+   * so the first follow scroll was read as the reader scrolling away and switched
+   * following off. Following turning itself off on its own first move.
+   *
+   * Instantly, too. A smooth scroll aims at where the bottom was when it started, and by
+   * the time it arrives the bottom has moved.
+   */
+  const toBottom = () => {
+    const el = scroller.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    put.current = el.scrollTop
+  }
+
+  useEffect(() => {
+    const el = scroller.current
+    if (!streaming || !el) return
+    // Has the page moved since we last put it somewhere? Asked here, synchronously,
+    // rather than left to the scroll event: that event is delivered a frame later, and
+    // at ten tokens a second a re-render lands in between — so the reader's scroll was
+    // undone before the browser got round to mentioning it. A wheel notch would vanish.
+    if (Math.abs(el.scrollTop - put.current) > 4) {
+      const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM
+      stick.current = near
+      if (!near) {
+        setAdrift(true)
+        return
+      }
+    }
+    if (stick.current) toBottom()
+  })
+
+  return {
+    // Only worth offering while something is actually being written; on a finished
+    // council the bottom is not going anywhere.
+    adrift: adrift && streaming,
+    resume: () => {
+      stick.current = true
+      setAdrift(false)
+      toBottom()
+    },
+  }
+}
+
+/** How close to the bottom still counts as being at it. */
+const NEAR_BOTTOM = 140
+
+/** The nearest ancestor that actually scrolls, or the page — which is what scrolls here. */
+function scrollerOf(node: HTMLElement | null): HTMLElement {
+  for (let el = node?.parentElement; el; el = el.parentElement) {
+    const overflow = getComputedStyle(el).overflowY
+    if ((overflow === 'auto' || overflow === 'scroll') && el.scrollHeight > el.clientHeight) {
+      return el
+    }
+  }
+  return (document.scrollingElement as HTMLElement | null) ?? document.documentElement
+}
+
+function FollowAgain({ onClick }: { onClick: () => void }) {
+  return (
+    <button className="follow-again" onClick={onClick}>
+      <span aria-hidden="true">↓</span> Jump to what is being written
+    </button>
   )
 }
 
