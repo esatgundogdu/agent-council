@@ -134,15 +134,28 @@ export interface Plate {
   key: string
   x: number
   y: number
-  back: boolean
 }
 
 //: Metres. The table is 3.1m across, which is about right for six people and gives the
 //: camera something with a believable sense of scale.
 const TABLE_R = 1.55
 const SEAT_R = 2.12
-const SEATED_Y = 0.44
-const STANDING_Y = 0.82
+
+/* The leg, in two segments with a knee between them, because a seated person is not a
+   standing one made shorter. These three numbers are the whole rig: standing, the hips
+   are a thigh plus a shin plus a foot off the floor; seated, the thigh is horizontal
+   and the hips are a shin plus a foot — which is also exactly how high the chair's
+   seat has to be for the feet to reach the ground. */
+const THIGH = 0.4
+const SHIN = 0.38
+const FOOT = 0.04
+const SEATED_Y = SHIN + FOOT
+const STANDING_Y = THIGH + SHIN + FOOT
+/** How far back the hips slide to be on the seat rather than in front of it. */
+const SIT_BACK = 0.1
+/** The head's centre inside the body group — where a caption is measured from. */
+const HEAD_Y = 0.6
+const HEAD_R = 0.125
 
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -162,8 +175,11 @@ function build(
 
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 40)
-  camera.position.set(0, 3.5, 6.0)
-  camera.lookAt(0, 0.66, 0)
+  // Far enough back that the nearest chair is inside the frame. That seat is the one
+  // closest to the lens, so it is the one that gets cut in half if the framing is set
+  // by the table rather than by it.
+  camera.position.set(0, 3.75, 6.7)
+  camera.lookAt(0, 0.58, 0)
 
   // Not `const`: the palette is read again whenever the theme is switched, and figures
   // built after a switch have to be built from the palette in force.
@@ -306,30 +322,26 @@ function build(
       width off, because a perspective camera is not an orthographic one. */
   function layout() {
     onLayout(
+      // One rule for every seat: a fixed height above the head, projected, and the
+      // caption sits above that. Near seats used to be treated differently — pushed out
+      // from the table and hung below — which meant no two names had the same
+      // relationship to the figure they belonged to, and the near ones ended up beside
+      // a shoulder rather than over a head. Consistency here is worth more than the
+      // clear floor the special case was buying.
       current.map((seat) => {
         const rad = (seat.angle * Math.PI) / 180
-        const head = seat.standing ? STANDING_Y + 0.62 : SEATED_Y + 0.6
-        const at = (radius: number) => {
-          probe.set(Math.cos(rad) * radius, head, Math.sin(rad) * radius)
-          probe.project(camera)
-          return { x: (probe.x * 0.5 + 0.5) * 100, y: (-probe.y * 0.5 + 0.5) * 100 }
+        // The crown of the head exactly, and the caption is lifted off it by a fixed
+        // number of CSS pixels rather than a distance in the scene. A world-space gap
+        // projects larger the nearer the seat, so the nearest name would float further
+        // from its head than the far ones — the same inconsistency, one step subtler.
+        const crown = (seat.standing ? STANDING_Y : SEATED_Y) + HEAD_Y + HEAD_R
+        probe.set(Math.cos(rad) * SEAT_R, crown, Math.sin(rad) * SEAT_R)
+        probe.project(camera)
+        return {
+          key: seat.key,
+          x: (probe.x * 0.5 + 0.5) * 100,
+          y: (-probe.y * 0.5 + 0.5) * 100,
         }
-
-        // A caption hangs below the point it is given. For the far seats that point is
-        // the head and the caption lands clear of it; for the near seats — the ones the
-        // camera is closest to, and so the biggest on screen — below the head is the
-        // chest. Those are pushed a seat's depth further out from the table, so the
-        // caption lands beside the figure on the floor rather than across it.
-        const near = Math.sin(rad) > 0
-        if (!near) return { key: seat.key, ...at(SEAT_R), back: true }
-
-        const out = at(SEAT_R + 0.7)
-        // Unless there is no floor left to put it on. An even number of seats — three
-        // panelists, or five — puts one of them dead in front of the lens, and that seat
-        // is close enough that below-the-head is off the bottom of the room entirely.
-        // It gets the far seats' treatment instead: above the head, over the empty table.
-        if (out.y <= 78) return { key: seat.key, ...out, back: false }
-        return { key: seat.key, ...at(SEAT_R), back: true }
       }),
     )
   }
@@ -364,18 +376,56 @@ function build(
   }
   document.addEventListener('visibilitychange', onHidden)
 
-  function onClick(event: MouseEvent) {
+  /** Which seat, if any, is under the pointer. */
+  function seatAt(event: MouseEvent): string | null {
     const box = renderer.domElement.getBoundingClientRect()
     pointer.x = ((event.clientX - box.left) / box.width) * 2 - 1
     pointer.y = -((event.clientY - box.top) / box.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
     const hit = raycaster.intersectObjects(picks, true)[0]
-    if (!hit) return
+    if (!hit) return null
     let node: THREE.Object3D | null = hit.object
     while (node && !node.userData.seat) node = node.parent
-    if (node?.userData.seat) onPick(node.userData.seat as string)
+    return (node?.userData.seat as string) ?? null
+  }
+
+  function onClick(event: MouseEvent) {
+    const seat = seatAt(event)
+    if (seat) onPick(seat)
   }
   renderer.domElement.addEventListener('click', onClick)
+
+  /**
+   * Hover feedback, because a canvas has none of its own.
+   *
+   * Every figure is clickable and nothing said so: the pointer stayed an arrow and
+   * nothing on screen moved, so the only way to discover a seat could be opened was to
+   * click one and find out. The figure under the cursor now lights from within and the
+   * pointer becomes a hand — the two things a browser would have done for free if this
+   * were a button rather than pixels in a canvas.
+   *
+   * Raycast per mousemove, not per frame, against the seat groups only. Nothing here
+   * runs while the pointer is still.
+   */
+  let hovered: string | null = null
+  function onMove(event: MouseEvent) {
+    const seat = seatAt(event)
+    if (seat === hovered) return
+    figures.get(hovered ?? '')?.highlight(false)
+    figures.get(seat ?? '')?.highlight(true)
+    hovered = seat
+    renderer.domElement.style.cursor = seat ? 'pointer' : ''
+    if (!running) render()
+  }
+  function onLeave() {
+    if (!hovered) return
+    figures.get(hovered)?.highlight(false)
+    hovered = null
+    renderer.domElement.style.cursor = ''
+    if (!running) render()
+  }
+  renderer.domElement.addEventListener('mousemove', onMove)
+  renderer.domElement.addEventListener('mouseleave', onLeave)
 
   // A context loss is not an error to log and forget: the canvas goes blank and stays
   // blank. Restoring is a rebuild, so the honest thing is to stand down and let the
@@ -431,6 +481,8 @@ function build(
       seen.disconnect()
       document.removeEventListener('visibilitychange', onHidden)
       renderer.domElement.removeEventListener('click', onClick)
+      renderer.domElement.removeEventListener('mousemove', onMove)
+      renderer.domElement.removeEventListener('mouseleave', onLeave)
       renderer.domElement.removeEventListener('webglcontextlost', onLost)
       for (const figure of figures.values()) figure.dispose()
       bin.dispose()
@@ -447,6 +499,7 @@ interface Figure {
   setPose: (seat: SeatState) => boolean
   update: (dt: number, clock: number) => boolean
   snap: () => void
+  highlight: (on: boolean) => void
   repaint: (theme: Theme) => void
   dispose: () => void
 }
@@ -495,16 +548,27 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
   const person = [skin, cloth, trouser]
 
   // The chair stays put; only the person moves.
+  // The seat's top surface is exactly hip height when seated. That is not a detail —
+  // it is what makes the figure look like it is sitting on the chair rather than
+  // hovering over it, and it is why the chair's height is derived rather than chosen.
+  const PAD = 0.07
   const chair = new THREE.Group()
-  const seatPad = new THREE.Mesh(bin.keep(new THREE.BoxGeometry(0.46, 0.07, 0.44)), chairMat)
-  seatPad.position.set(0, 0.42, 0.13)
+  const seatPad = new THREE.Mesh(bin.keep(new THREE.BoxGeometry(0.46, PAD, 0.44)), chairMat)
+  seatPad.position.set(0, SEATED_Y - PAD / 2, 0.13)
   seatPad.castShadow = true
   seatPad.receiveShadow = true
-  const back = new THREE.Mesh(bin.keep(new THREE.BoxGeometry(0.46, 0.5, 0.07)), chairMat)
-  back.position.set(0, 0.68, 0.33)
+  // Backrest to the middle of the back, not over the shoulder. The seat nearest the
+  // camera is seen from behind, so a tall back is a slab between the viewer and the
+  // person sitting in it — and that seat is the biggest thing on screen.
+  const REST = 0.34
+  const back = new THREE.Mesh(bin.keep(new THREE.BoxGeometry(0.46, REST, 0.07)), chairMat)
+  back.position.set(0, SEATED_Y + REST / 2, 0.33)
   back.castShadow = true
-  const stem = new THREE.Mesh(bin.keep(new THREE.CylinderGeometry(0.05, 0.06, 0.42, 12)), chairMat)
-  stem.position.set(0, 0.21, 0.13)
+  const stem = new THREE.Mesh(
+    bin.keep(new THREE.CylinderGeometry(0.05, 0.06, SEATED_Y - PAD, 12)),
+    chairMat,
+  )
+  stem.position.set(0, (SEATED_Y - PAD) / 2, 0.13)
   chair.add(seatPad, back, stem)
   root.add(chair)
 
@@ -514,8 +578,8 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
   torso.position.y = 0.3
   torso.scale.set(1.15, 1, 0.82)
   torso.castShadow = true
-  const head = new THREE.Mesh(bin.keep(new THREE.SphereGeometry(0.125, 24, 18)), skin)
-  head.position.y = 0.6
+  const head = new THREE.Mesh(bin.keep(new THREE.SphereGeometry(HEAD_R, 24, 18)), skin)
+  head.position.y = HEAD_Y
   head.castShadow = true
   const shoulders = new THREE.Mesh(bin.keep(new THREE.CapsuleGeometry(0.075, 0.3, 5, 12)), cloth)
   shoulders.rotation.z = Math.PI / 2
@@ -538,12 +602,43 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
 
   body.add(torso, head, shoulders, armL, armR)
 
+  // Two hinges per leg. Standing they are straight; seated the hip swings the thigh
+  // forward to horizontal and the knee folds the shin back down, which is the shape
+  // that reads as sitting. Squashing a straight leg — what this used to do — reads as
+  // a short person standing in front of a chair with their feet inside it.
+  const hips: THREE.Group[] = []
+  const knees: THREE.Group[] = []
   const legs = new THREE.Group()
-  for (const side of [-0.095, 0.095]) {
-    const leg = new THREE.Mesh(bin.keep(new THREE.CapsuleGeometry(0.068, 0.26, 5, 12)), trouser)
-    leg.position.set(side, -0.19, 0)
-    leg.castShadow = true
-    legs.add(leg)
+  for (const side of [-0.1, 0.1]) {
+    const hip = new THREE.Group()
+    hip.position.set(side, 0, 0)
+
+    const thigh = new THREE.Mesh(
+      bin.keep(new THREE.CapsuleGeometry(0.075, THIGH - 0.15, 5, 12)),
+      trouser,
+    )
+    thigh.position.y = -THIGH / 2
+    thigh.castShadow = true
+
+    const knee = new THREE.Group()
+    knee.position.y = -THIGH
+    const shin = new THREE.Mesh(
+      bin.keep(new THREE.CapsuleGeometry(0.062, SHIN - 0.12, 5, 12)),
+      trouser,
+    )
+    shin.position.y = -SHIN / 2
+    shin.castShadow = true
+    // Pointing the way the figure faces, so a seated leg ends in a foot on the floor
+    // rather than a stump.
+    const foot = new THREE.Mesh(bin.keep(new THREE.BoxGeometry(0.11, FOOT, 0.2)), trouser)
+    foot.position.set(0, -SHIN - FOOT / 2, -0.05)
+    foot.castShadow = true
+    knee.add(shin, foot)
+
+    hip.add(thigh, knee)
+    legs.add(hip)
+    hips.push(hip)
+    knees.push(knee)
   }
   body.add(legs)
   root.add(body)
@@ -584,6 +679,8 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
     // a standing figure from looking like a prop.
     const breath = pose.rise > 0.5 ? Math.sin(clock * 1.7) * 0.009 : 0
     body.position.y = lift + breath
+    // Back onto the seat when sitting, and off it when standing up.
+    body.position.z = (1 - pose.rise) * SIT_BACK
     // Seated, the body leans in a little; standing, it straightens.
     body.rotation.x = (1 - pose.rise) * 0.07
     // Holding the floor is a slow sway and a hand that moves while it talks. Without it
@@ -591,8 +688,10 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
     // and not an action — and the whole reason the room exists is to show the action.
     body.rotation.y = pose.rise * Math.sin(clock * 0.9) * 0.1
     const talk = pose.rise * (0.34 + Math.sin(clock * 2.1) * 0.3)
-    legs.scale.y = 0.55 + 0.45 * pose.rise
-    legs.position.y = -0.05 * (1 - pose.rise)
+    // Sitting is a right angle at the hip and another at the knee; standing is neither.
+    const sit = (1 - pose.rise) * (Math.PI / 2)
+    for (const hip of hips) hip.rotation.x = sit
+    for (const knee of knees) knee.rotation.x = -sit
 
     // Writing: the hand tracks across the sheet and flicks back to the margin at the end
     // of the line, with a fast small scratch on top of the sweep. The shape of the cycle
@@ -645,6 +744,17 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
       pose.write = target.write
       pose.gone = target.gone
       place(0)
+    },
+    /* Lit from within rather than outlined or scaled. An outline needs a second pass
+       and a scale moves the figure out from under the pointer that is hovering it. */
+    highlight(on) {
+      const glow = on ? 0.42 : 0
+      cloth.emissive.setHex(seat.colour)
+      cloth.emissiveIntensity = glow
+      skin.emissive.setHex(0xffffff)
+      skin.emissiveIntensity = on ? 0.12 : 0
+      trouser.emissive.setHex(seat.colour)
+      trouser.emissiveIntensity = glow * 0.5
     },
     /* The panelist's own colour is not in here: a seat's tint identifies it in the
        transcript too, and it means the same thing in either palette. */

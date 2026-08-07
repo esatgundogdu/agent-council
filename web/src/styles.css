@@ -536,21 +536,25 @@ label { display: block; }
      canvas underneath answers a raycast and nothing else. The container stays
      `pointer-events: none` so the scene keeps the rest of its surface. */
   pointer-events: auto;
-  padding: 0.1rem 0.2rem;
+  padding: 0.15rem 0.4rem;
   border: 0;
   border-radius: var(--r-sm);
   background: none;
   font: inherit;
   cursor: pointer;
-  /* The projected point is the figure's head, so the caption hangs just under it.
-     `translate(-50%)` is what centres the box on that point — a negative margin as well
-     would centre it twice and put every name half a box to the left. */
-  transform: translate(-50%, 1.3rem);
-  width: var(--plate-w);
+  /* Sits above the point it is given, which the scene puts a little over the head. One
+     rule for every seat — near and far — so each name has the same relationship to the
+     figure it belongs to. `translate(-50%)` centres it; a negative margin as well would
+     centre it twice and put every name half a box to the left.
+
+     `max-content` up to a limit, so the hover background is the size of the name rather
+     than the size of the column it was allotted. A fixed width meant hovering "beta"
+     lit a rectangle three times its length. */
+  transform: translate(-50%, calc(-100% - 0.45rem));
+  width: max-content;
+  max-width: var(--plate-w);
   text-align: center;
 }
-/* Above the figure for the far side of the table, where below would be on the table. */
-.plate.back { transform: translate(-50%, -3.1rem); }
 .plate b { display: block; font-size: var(--t-meta); font-weight: 600; color: var(--text); }
 .plate i {
   display: block;
@@ -561,7 +565,7 @@ label { display: block; }
 }
 /* The caption sits on a scene rather than on a surface, so hover and focus need a
    backing of their own to read against — the figures behind them are every colour. */
-.plate:hover, .plate:focus-visible { background: color-mix(in srgb, var(--bg) 78%, transparent); }
+.plate:hover, .plate:focus-visible { background: color-mix(in srgb, var(--bg) 82%, transparent); }
 .plate:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .plate i.now { color: var(--live); }
 .plate i.ready { color: var(--ready); }

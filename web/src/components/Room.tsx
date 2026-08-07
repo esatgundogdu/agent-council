@@ -187,7 +187,7 @@ function Nameplates({
         return (
           <button
             key={seat.key}
-            className={`plate${at.back ? ' back' : ''}`}
+            className="plate"
             onClick={seat.onOpen}
             title={seat.title}
             aria-label={`${seat.name}. ${seat.note}.`}

@@ -150,6 +150,29 @@ const drawer = await ev("JSON.stringify({ opensInspector: Boolean(document.query
 Object.assign(out.seats, JSON.parse(drawer.result.value))
 await ev("document.querySelector('.drawer-scrim')?.click()")
 
+// A canvas has no hover of its own: the pointer stays an arrow over a figure that is
+// perfectly clickable, so the only way to find out is to click and see. The scene has to
+// supply what the browser would have given a button for free.
+const hover = await ev(`(() => {
+  const canvas = document.querySelector('.room3d-wrap canvas')
+  if (!canvas) return JSON.stringify({ skipped: 'no 3D room on this page' })
+  const box = canvas.getBoundingClientRect()
+  const fire = (x, y) => canvas.dispatchEvent(
+    new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true }))
+
+  // A caption sits just above the head it names, so a little below it is the figure.
+  const plate = document.querySelectorAll('.plate')[1].getBoundingClientRect()
+  fire(plate.left + plate.width / 2, plate.bottom + 34)
+  const onFigure = canvas.style.cursor
+
+  // The middle of the tabletop is scenery, and must not claim to be clickable.
+  fire(box.left + box.width / 2, box.top + box.height * 0.45)
+  const onNothing = canvas.style.cursor
+
+  return JSON.stringify({ onFigure, onNothing })
+})()`)
+out.hover = JSON.parse(hover.result.value)
+
 // The probe must accept WebGL2 only. three has been WebGL2-only since r163, so a browser
 // with `webgl` but not `webgl2` cannot run the scene — and has to be turned away *before*
 // half a megabyte is fetched, since it is the machine least able to afford the download.
