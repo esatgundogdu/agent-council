@@ -32,6 +32,7 @@ from ..config import ConfigError
 from ..control import ControlError
 from ..orchestrator import MODES, CouncilError
 from .hub import Hub
+from .idle import Idle, watch
 from .registry import Registry, RegistryError, build_spec, defaults_for_form
 from .security import TOKEN_COOKIE, TOKEN_QUERY, Guard
 
@@ -65,6 +66,7 @@ def create_app(
     token: str,
     registry: Registry | None = None,
     extra_origins: tuple[str, ...] = (),
+    idle: Idle | None = None,
 ) -> FastAPI:
     guard = Guard(token, extra_origins)
 
@@ -73,7 +75,19 @@ def create_app(
         app.state.registry = registry or Registry()
         app.state.hub = Hub()
         app.state.registry.on_change = app.state.hub.publish
+        app.state.idle = idle
+        watchdog = None
+        if idle is not None:
+            # Asked live rather than tracked, so nothing can leave the daemon believing
+            # a council is still going after the thing that was going has gone.
+            idle.busy = lambda: any(
+                runtime.state in ("starting", "running")
+                for runtime in app.state.registry.sessions.values()
+            )
+            watchdog = asyncio.create_task(watch(idle))
         yield
+        if watchdog is not None:
+            watchdog.cancel()
         await app.state.registry.shutdown()
 
     app = FastAPI(title="Plan Council", version=__version__, lifespan=lifespan)
@@ -271,11 +285,11 @@ def create_app(
     async def session_events(request: Request, session_id: str, from_seq: int = 0):
         view = _view(request, session_id)
         start = _resume_point(request, from_seq)
-        return _sse(_session_stream(view, start, request))
+        return _sse(_session_stream(view, start, request), idle)
 
     @app.get("/api/events", dependencies=protected)
     async def daemon_events(request: Request):
-        return _sse(_daemon_stream(request))
+        return _sse(_daemon_stream(request), idle)
 
     # ---- the app itself --------------------------------------------------
 
@@ -321,9 +335,25 @@ def create_app(
 # ---- streaming -----------------------------------------------------------
 
 
-def _sse(generator) -> StreamingResponse:
+async def _counted(generator, idle: Idle):
+    """The same stream, with the daemon told that somebody is on the other end of it.
+
+    Registered before the first frame and released in `finally`, so a client that
+    disappears without a word — a closed laptop, a killed tab — still decrements. Every
+    open tab holds one of these, which is how the daemon knows the difference between
+    quiet and abandoned.
+    """
+    idle.opened()
+    try:
+        async for chunk in generator:
+            yield chunk
+    finally:
+        idle.closed()
+
+
+def _sse(generator, idle: Idle | None = None) -> StreamingResponse:
     return StreamingResponse(
-        generator,
+        _counted(generator, idle) if idle is not None else generator,
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-store",

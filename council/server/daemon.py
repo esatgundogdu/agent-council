@@ -121,8 +121,15 @@ def current() -> dict | None:
     return record
 
 
-def ensure_running(port: int = DEFAULT_PORT, wait: float = START_TIMEOUT) -> dict:
-    """The daemon's connection details, starting it if nothing is listening."""
+def ensure_running(
+    port: int = DEFAULT_PORT, wait: float = START_TIMEOUT, idle_seconds: float = 0.0
+) -> dict:
+    """The daemon's connection details, starting it if nothing is listening.
+
+    `idle_seconds` only applies to a daemon this call starts. One already running
+    keeps whatever lifetime it was given — a shortcut must not quietly put an
+    expiry on the daemon somebody else is using.
+    """
     existing = current()
     if existing is not None:
         return existing
@@ -134,7 +141,7 @@ def ensure_running(port: int = DEFAULT_PORT, wait: float = START_TIMEOUT) -> dic
     token = previous if isinstance(previous, str) and previous else new_token()
     chosen = free_port(port)
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    _spawn(chosen, token)
+    _spawn(chosen, token, idle_seconds)
 
     deadline = time.monotonic() + wait
     while time.monotonic() < deadline:
@@ -164,11 +171,13 @@ def ensure_running(port: int = DEFAULT_PORT, wait: float = START_TIMEOUT) -> dic
     )
 
 
-def _spawn(port: int, token: str) -> None:
+def _spawn(port: int, token: str, idle_seconds: float = 0.0) -> None:
     daemon_argv = [
         sys.executable, "-m", "council.server",
         "--port", str(port), "--token", token,
     ]
+    if idle_seconds > 0:
+        daemon_argv += ["--idle-seconds", str(idle_seconds)]
     # Via the launcher, which exits at once: see council/server/launcher.py for why
     # spawning the daemon directly is not enough to make it outlive this shell.
     argv = [
@@ -248,12 +257,32 @@ def url(record: dict, with_token: bool = False) -> str:
     return f"{base}?token={record['token']}" if with_token else base
 
 
-def serve(port: int, token: str, host: str = "127.0.0.1", dev_origin: str = "") -> None:
-    """Run the daemon in this process (what the detached child does)."""
+def serve(
+    port: int,
+    token: str,
+    host: str = "127.0.0.1",
+    dev_origin: str = "",
+    idle_seconds: float = 0.0,
+) -> None:
+    """Run the daemon in this process (what the detached child does).
+
+    `uvicorn.run` is a one-liner that keeps its `Server` to itself, and the server is
+    the only thing that can be asked to stop. So it is built by hand here: `should_exit`
+    is checked on every tick of the main loop, which makes it a graceful shutdown rather
+    than a process killed from the outside with a request half-written.
+    """
     import uvicorn
 
     from .app import create_app
+    from .idle import Idle
 
     extra = (dev_origin,) if dev_origin else ()
-    app = create_app(token=token, extra_origins=extra)
-    uvicorn.run(app, host=host, port=port, log_level="warning", access_log=False)
+    idle = Idle(idle_seconds, busy=lambda: False) if idle_seconds > 0 else None
+    app = create_app(token=token, extra_origins=extra, idle=idle)
+    config = uvicorn.Config(
+        app, host=host, port=port, log_level="warning", access_log=False
+    )
+    server = uvicorn.Server(config)
+    if idle is not None:
+        idle.stop = lambda: setattr(server, "should_exit", True)
+    server.run()

@@ -242,6 +242,7 @@ Everything the UI does, the CLI does, because both are clients of the same API.
 |---|---|
 | `council start --task F --project-dir D` | convene; returns a session id at once |
 | `council start … --follow` | …and stream progress until it ends |
+| `council shortcut` | put a desktop icon that opens the control plane and closes it after |
 | `council watch [id]` | follow a running session in this terminal |
 | `council wait [id] [--timeout S]` | block until it ends, quietly. 0 done · 2 failed · 4 timed out |
 | `council status [id] [--json]` | one-shot progress report |
@@ -253,6 +254,31 @@ Everything the UI does, the CLI does, because both are clients of the same API.
 
 `council run` is the escape hatch: no daemon, no port, nothing to watch. Use it in CI
 and scripts. Everything else goes through the control plane.
+
+### One icon, and no server to remember
+
+```bash
+council shortcut
+```
+
+Puts **Council** on your desktop. Open it and the control plane starts and opens in your
+browser; close the last tab and it shuts itself down ninety seconds later. Nothing to
+start by hand, no terminal to leave open, and nothing left running that you have to
+remember to stop.
+
+It knows whether anyone is there because every open tab holds an event stream — the
+session list subscribes to one, a session view subscribes to its own, and `council wait`
+holds one too. So the count of live streams is the count of people looking, and no
+guessing is involved.
+
+**It will not exit while a council is running.** A panel mid-argument is minutes of real
+model calls and your own quota, and nobody watching is not a reason to throw that away.
+The ninety seconds start once the last tab has closed *and* the last session has
+finished, whichever comes later — measured: a council ran for 47 seconds with no tab
+open at all, and the daemon went away 8 seconds after it landed, not before.
+
+This is opt-in and belongs to the shortcut. `council up` on its own, and a daemon
+started for you by a CLI command, both stay up until you stop them.
 
 `council wait` is the one to reach for from another program. `watch` narrates for a
 person; `wait` says nothing but the digest path and puts its answer in the exit code, so

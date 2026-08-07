@@ -22,13 +22,26 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="extra allowed Origin, e.g. http://localhost:5173 for the Vite dev server",
     )
+    parser.add_argument(
+        "--idle-seconds",
+        type=float,
+        default=0.0,
+        help="exit after this many seconds with no open tab and nothing running. "
+        "0 (default) means stay up until stopped.",
+    )
     args = parser.parse_args(argv)
 
     token = args.token or new_token()
     if not args.token:
         print(f"token: {token}")
         print(f"open:  http://127.0.0.1:{args.port}/?token={token}")
-    serve(port=args.port, token=token, host=args.host, dev_origin=args.dev_origin)
+    serve(
+        port=args.port,
+        token=token,
+        host=args.host,
+        dev_origin=args.dev_origin,
+        idle_seconds=args.idle_seconds,
+    )
     return 0
 
 

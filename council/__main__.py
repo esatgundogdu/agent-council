@@ -55,6 +55,10 @@ EXIT_CONFIG = 3
 # code because the caller's next move is different: not "it broke", but "ask me again".
 EXIT_TIMEOUT = 4
 
+#: Default quiet before an `--exit-when-idle` daemon lets go. Long enough that a
+#: browser still opening, or a tab being reloaded, is never mistaken for going away.
+IDLE_SECONDS = 90.0
+
 # How long to leave a dropped event stream alone before picking it up again.
 RECONNECT_SECONDS = 2.0
 
@@ -71,6 +75,18 @@ def build_parser() -> argparse.ArgumentParser:
     up.add_argument("--port", type=int, default=DEFAULT_PORT)
     up.add_argument("--open", action="store_true", help="also open a browser")
     up.add_argument(
+        "--exit-when-idle",
+        dest="idle_seconds",
+        nargs="?",
+        type=float,
+        const=IDLE_SECONDS,
+        default=0.0,
+        metavar="SECONDS",
+        help=f"shut the daemon down once no tab is open and nothing is running "
+        f"(default {IDLE_SECONDS:.0f}s of quiet). Only applies to a daemon this "
+        f"command starts; it will never exit while a council is running.",
+    )
+    up.add_argument(
         "--foreground",
         action="store_true",
         help="run it in this terminal instead of in the background (Ctrl+C to stop)",
@@ -82,6 +98,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("down", help="stop the control plane")
+
+    link = sub.add_parser(
+        "shortcut",
+        help="put a desktop shortcut that opens the control plane and closes it after",
+    )
+    link.add_argument("--port", type=int, default=None)
+    link.add_argument(
+        "--idle-seconds",
+        type=float,
+        default=IDLE_SECONDS,
+        help=f"quiet before the daemon lets go (default {IDLE_SECONDS:.0f})",
+    )
+    link.add_argument("--into", default=None, help="write it here instead of the desktop")
 
     # ---- sessions through the daemon ----
     start = sub.add_parser("start", help="convene a council through the control plane")
@@ -219,7 +248,7 @@ def cmd_up(args) -> int:
     if args.foreground:
         return _serve_here(daemon, args)
     try:
-        record = daemon.ensure_running(args.port)
+        record = daemon.ensure_running(args.port, idle_seconds=args.idle_seconds)
     except DaemonError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_CONFIG
@@ -229,6 +258,37 @@ def cmd_up(args) -> int:
         import webbrowser
 
         webbrowser.open(link)
+    return EXIT_OK
+
+
+def cmd_shortcut(args) -> int:
+    """One icon: opens the control plane, and takes it away when you are done."""
+    from .shortcut import ShortcutError, create
+
+    if sys.platform == "darwin":
+        print(
+            "macOS has no single-file launcher worth writing. Make one in Automator, "
+            "or add this line to your shell profile:\n\n"
+            f"  alias council-open='{sys.executable} -m council up --open "
+            f"--exit-when-idle {args.idle_seconds:.0f}'",
+            file=sys.stderr,
+        )
+        return EXIT_CONFIG
+    try:
+        path = create(
+            args.idle_seconds,
+            args.port,
+            Path(args.into).expanduser() if args.into else None,
+        )
+    except ShortcutError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    print(f"Shortcut: {path}")
+    print(
+        "Open it and the control plane starts and opens in your browser. Close the\n"
+        f"last tab and it shuts down after {args.idle_seconds:.0f}s of quiet — never\n"
+        "while a council is still running."
+    )
     return EXIT_OK
 
 
@@ -815,6 +875,7 @@ def _read_inputs(args) -> tuple[str, str] | None:
 COMMANDS = {
     "up": cmd_up,
     "down": cmd_down,
+    "shortcut": cmd_shortcut,
     "start": cmd_start,
     "watch": cmd_watch,
     "wait": cmd_wait,
