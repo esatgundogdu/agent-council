@@ -1,6 +1,7 @@
 """The daemon's HTTP surface, driven end to end against a mock panel."""
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -754,3 +755,24 @@ def test_lowering_the_ceiling_lowers_the_floor_with_it(client, project):
     wait_for(client, created["id"])
     protocol = client.get(f"/api/sessions/{created['id']}").json()["session"]["protocol"]
     assert protocol["min_rounds"] == 2 and protocol["max_rounds"] == 2
+
+
+def test_the_app_shell_is_revalidated_and_its_assets_are_not(client):
+    """A rebuilt UI has to arrive on a refresh, and cost nothing when it has not changed.
+
+    `index.html` keeps its name forever and is what names the hashed bundles, so it must
+    be asked for every time. Without an explicit header the response carries no
+    `Cache-Control` at all, and a browser may then invent a freshness lifetime from
+    `Last-Modified` — which is how you rebuild, refresh, and are served the old
+    application out of cache with nothing to tell you that is what happened.
+    """
+    index = client.get("/")
+    assert index.status_code == 200
+    assert index.headers["cache-control"] == "no-cache"
+
+    name = re.search(r"assets/(index-[A-Za-z0-9_-]+\.js)", index.text)
+    assert name, "the built index should reference a content-hashed bundle"
+    asset = client.get(f"/assets/{name.group(1)}")
+    assert asset.status_code == 200
+    # Safe precisely because the name changes when the contents do.
+    assert "immutable" in asset.headers["cache-control"]

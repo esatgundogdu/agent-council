@@ -41,6 +41,18 @@ WEB_DIR = PACKAGE_ROOT / "council" / "web"
 #: `council.calls.call_filename` produces.
 CALL_FILE = re.compile(r"^\d+-[a-z0-9\-]+-r\d+\.log$")
 
+#: Asset file names carry a hash of their own contents, so a changed file is a changed
+#: URL and the old one can be kept forever without ever being wrong.
+ASSET_CACHE = "public, max-age=31536000, immutable"
+
+#: `index.html` is the one file whose name never changes, and it is what points at those
+#: hashed names — so it has to be asked for every time. Without this the response carries
+#: no `Cache-Control` at all, and a browser is then free to guess a freshness lifetime
+#: from `Last-Modified` (usually a tenth of the file's age). Rebuild the UI and refresh,
+#: and the guess is what you get: the old application, from cache, for a quarter of an
+#: hour, with no way to tell that is what happened.
+INDEX_CACHE = "no-cache"
+
 #: Silence between events after which a comment frame is sent, so proxies and sleeping
 #: laptops do not quietly drop an idle stream.
 KEEPALIVE_SECONDS = 15.0
@@ -289,11 +301,11 @@ def create_app(
 
         asset = _asset(path)
         if asset is not None:
-            return FileResponse(asset)
+            return FileResponse(asset, headers={"Cache-Control": ASSET_CACHE})
         index = WEB_DIR / "index.html"
         if not index.is_file():
             return HTMLResponse(_message(_NOT_BUILT), status_code=503)
-        return FileResponse(index)
+        return FileResponse(index, headers={"Cache-Control": INDEX_CACHE})
 
     # ---- helpers ---------------------------------------------------------
 
