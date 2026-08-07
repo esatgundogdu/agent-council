@@ -266,10 +266,25 @@ browser; close the last tab and it shuts itself down ninety seconds later. Nothi
 start by hand, no terminal to leave open, and nothing left running that you have to
 remember to stop.
 
+It opens in a window of its own — no address bar, no tabs, its own taskbar entry —
+because closing *that* is an unambiguous "I am done" in a way that closing one tab of
+twenty is not. Where no Chromium browser is installed it falls back to an ordinary tab.
+
+And there is a **Close** button in the corner of the sidebar, next to the theme toggle.
+That is the one to reach for when you are finished: the server stops immediately instead
+of ninety seconds later, and it works on any daemon, including one you started by hand.
+A control plane you can only close by remembering which terminal started it, and what
+the command was called, is a control plane you leave running.
+
 It knows whether anyone is there because every open tab holds an event stream — the
 session list subscribes to one, a session view subscribes to its own, and `council wait`
 holds one too. So the count of live streams is the count of people looking, and no
 guessing is involved.
+
+**Neither way will end a running council behind your back.** The Close button refuses
+the first time and answers with the list of what is still going, so the dialog can show
+you what you would be stopping; only the second click, taken with that list on screen,
+goes through. Idle shutdown never gets that far — it simply waits.
 
 **It will not exit while a council is running.** A panel mid-argument is minutes of real
 model calls and your own quota, and nobody watching is not a reason to throw that away.

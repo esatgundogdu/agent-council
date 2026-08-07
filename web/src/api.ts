@@ -8,7 +8,10 @@ import type {
 } from './types'
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  /** `detail` is whatever the server put in the body. Most errors say what went wrong
+      in a sentence; a few — the refusal to shut down over a running council — answer
+      with the facts the UI has to show, and those would be lost as a status line. */
+  constructor(public status: number, message: string, public detail?: unknown) {
     super(message)
   }
 }
@@ -21,13 +24,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
   if (!response.ok) {
     let detail = response.statusText
+    let body: unknown
     try {
       const payload = await response.json()
-      if (payload && typeof payload.detail === 'string') detail = payload.detail
+      body = payload?.detail
+      if (typeof body === 'string') detail = body
     } catch {
       /* the body was not JSON; the status line will have to do */
     }
-    throw new ApiError(response.status, detail)
+    throw new ApiError(response.status, detail, body)
   }
   const type = response.headers.get('content-type') || ''
   return (type.includes('json') ? response.json() : response.text()) as Promise<T>
@@ -45,6 +50,13 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   remove: (id: string) => request<unknown>(`/api/sessions/${id}`, { method: 'DELETE' }),
+  /** Stop the daemon. Refuses with 409 and the list while a council is running, unless
+      `force` — so the first click can never be the one that throws work away. */
+  shutdown: (force = false) =>
+    request<{ stopping: boolean; cancelled: { id: string; task: string }[] }>(
+      '/api/shutdown',
+      { method: 'POST', body: JSON.stringify({ force }) },
+    ),
   control: (id: string, action: string, payload: Record<string, unknown> = {}) =>
     request<{ action: string; detail: string }>(`/api/sessions/${id}/control`, {
       method: 'POST',

@@ -277,12 +277,13 @@ def serve(
     from .idle import Idle
 
     extra = (dev_origin,) if dev_origin else ()
-    idle = Idle(idle_seconds, busy=lambda: False) if idle_seconds > 0 else None
+    # Always built, even with idle shutdown off: `stop` is also what the UI's Close
+    # button pulls, and that has to work on any daemon.
+    idle = Idle(idle_seconds, busy=lambda: False)
     app = create_app(token=token, extra_origins=extra, idle=idle)
     config = uvicorn.Config(
         app, host=host, port=port, log_level="warning", access_log=False
     )
     server = uvicorn.Server(config)
-    if idle is not None:
-        idle.stop = lambda: setattr(server, "should_exit", True)
+    idle.stop = lambda: setattr(server, "should_exit", True)
     server.run()

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { api, streamSessions } from './api'
+import { ApiError, api, streamSessions } from './api'
 import { ago, duration, tokens as fmtTokens } from './format'
 import { NewCouncil } from './components/NewCouncil'
 import { Sidebar } from './components/Sidebar'
@@ -38,6 +38,8 @@ export function App() {
   const [sessions, setSessions] = useState<SessionRow[]>([])
   const [confirming, setConfirming] = useState<SessionRow | null>(null)
   const [theme, setTheme] = useState<Theme>(storedTheme)
+  const [closing, setClosing] = useState(false)
+  const [closed, setClosed] = useState(false)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -86,6 +88,7 @@ export function App() {
         onDelete={(id) => setConfirming(sessions.find((s) => s.id === id) ?? null)}
         theme={theme}
         onTheme={setTheme}
+        onClose={() => setClosing(true)}
       />
       <main className="main">
         {route.name === 'new' && (
@@ -108,6 +111,124 @@ export function App() {
           onConfirm={() => void remove(confirming)}
         />
       )}
+
+      {closing && (
+        <CloseCouncil
+          onCancel={() => setClosing(false)}
+          onClosed={() => {
+            setClosing(false)
+            setClosed(true)
+          }}
+        />
+      )}
+      {closed && <Gone />}
+    </div>
+  )
+}
+
+/**
+ * Shutting the control plane down, and what it asks first.
+ *
+ * The daemon refuses the first request while a council is running and answers with the
+ * list, so the dialog can show what would be thrown away instead of asking the user to
+ * remember. Only the second click — the one taken with that list on screen — is allowed
+ * to end them.
+ */
+function CloseCouncil({ onCancel, onClosed }: { onCancel: () => void; onClosed: () => void }) {
+  const [running, setRunning] = useState<{ id: string; task: string }[] | null>(null)
+  const [failed, setFailed] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+
+  // Same treatment as the delete dialog beside it: Escape closes, focus starts on the
+  // safe button and goes back where it came from.
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    box.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      opener?.focus?.()
+    }
+  }, [onCancel])
+
+  async function close(force: boolean) {
+    setBusy(true)
+    setFailed(null)
+    try {
+      await api.shutdown(force)
+      onClosed()
+    } catch (error) {
+      const detail = error instanceof ApiError ? error.detail : null
+      const list = (detail as { running?: { id: string; task: string }[] } | null)?.running
+      if (list?.length) setRunning(list)
+      else setFailed(error instanceof Error ? error.message : String(error))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="scrim" onClick={onCancel} role="presentation">
+      <div
+        className="dialog"
+        ref={box}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Close Council?"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3>Close Council?</h3>
+        {running ? (
+          <>
+            <p className="dim">
+              {running.length === 1 ? 'A council is' : `${running.length} councils are`} still
+              running. Closing now ends {running.length === 1 ? 'it' : 'them'} — everything
+              written so far is kept, but the debate stops where it is.
+            </p>
+            <ul className="closing-list">
+              {running.map((row) => (
+                <li key={row.id}>
+                  <code>{row.id}</code>
+                  <span>{row.task || '(no task)'}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="dim">
+            The server stops and this page goes with it. Everything already written stays in
+            your project under <code>.council/</code>; open the shortcut again whenever you
+            want it back.
+          </p>
+        )}
+        {failed && <p className="dim">Could not close it: {failed}</p>}
+        <div className="strip" style={{ justifyContent: 'flex-end', marginTop: '1.2rem' }}>
+          <button onClick={onCancel} disabled={busy}>
+            Keep it open
+          </button>
+          <button className="danger" onClick={() => void close(Boolean(running))} disabled={busy}>
+            {running ? 'Stop them and close' : 'Close Council'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** After the daemon has gone. Nothing here can talk to anything, and says so. */
+function Gone() {
+  return (
+    <div className="gone">
+      <div>
+        <h3>Council is closed.</h3>
+        <p className="dim">
+          The server has stopped, so nothing on this page can do anything now. Close the
+          window — everything it wrote is still in your project, under <code>.council/</code>.
+        </p>
+      </div>
     </div>
   )
 }

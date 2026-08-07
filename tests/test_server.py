@@ -776,3 +776,55 @@ def test_the_app_shell_is_revalidated_and_its_assets_are_not(client):
     assert asset.status_code == 200
     # Safe precisely because the name changes when the contents do.
     assert "immutable" in asset.headers["cache-control"]
+
+
+def test_shutdown_refuses_while_a_council_is_running(client, project, tmp_path):
+    """The first click can never be the one that throws work away.
+
+    It answers with the list rather than a sentence, so the dialog can show what is at
+    stake instead of asking the user to go and look. The panel is paced, because a mock
+    council that finishes before the request arrives tests nothing.
+    """
+    from council.server.idle import Idle
+
+    scenario = tmp_path / "paced.json"
+    scenario.write_text(json.dumps({"default": {"delay": 6.0}}), encoding="utf-8")
+    client.app.state.idle = Idle(seconds=0.0, busy=lambda: False)
+    client.app.state.idle.stop = lambda: None
+
+    created = start(client, project, scenario=str(scenario))
+    response = client.post("/api/shutdown", json={})
+
+    assert response.status_code == 409, "a running council outranks a click"
+    detail = response.json()["detail"]
+    assert [row["id"] for row in detail["running"]] == [created["id"]]
+    assert detail["running"][0]["task"].startswith("Add a rate limiter")
+    assert "force" in detail["retry"]
+
+    # And with the list on screen, the second one goes through.
+    forced = client.post("/api/shutdown", json={"force": True})
+    assert forced.status_code == 200
+    assert [row["id"] for row in forced.json()["cancelled"]] == [created["id"]]
+
+
+def test_shutdown_needs_a_daemon_that_can_stop_itself(client):
+    """A test app has no server behind it, and says so rather than pretending."""
+    response = client.post("/api/shutdown", json={})
+    assert response.status_code == 501
+
+
+def test_shutdown_stops_when_nothing_is_running(client):
+    from council.server.idle import Idle
+
+    stopped = []
+    idle = Idle(seconds=0.0, busy=lambda: False)
+    idle.stop = lambda: stopped.append(True)
+    client.app.state.idle = idle
+
+    response = client.post("/api/shutdown", json={})
+    assert response.status_code == 200
+    assert response.json() == {"stopping": True, "cancelled": []}
+    # Scheduled just after the response, so the browser is answered before the socket
+    # it asked over goes away.
+    time.sleep(0.5)
+    assert stopped == [True]

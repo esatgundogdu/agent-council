@@ -27,6 +27,23 @@ function SunIcon() {
   );
 }
 
+/* A power symbol: the arc with a break at the top, and the stroke through it. Drawn
+   for the same reason the sun and moon are — ⏻ is a glyph most system fonts lack. */
+function PowerIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+      <path
+        d="M4.6 4.1a5 5 0 1 0 6.8 0"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path d="M8 2.2v5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function MoonIcon() {
   return (
     <svg
@@ -63,6 +80,7 @@ export function Sidebar({
   onDelete,
   theme,
   onTheme,
+  onClose,
 }: {
   sessions: SessionRow[];
   active: string | null;
@@ -71,6 +89,7 @@ export function Sidebar({
   onDelete: (id: string) => void;
   theme: Theme;
   onTheme: (theme: Theme) => void;
+  onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
 
@@ -112,6 +131,17 @@ export function Sidebar({
           onClick={() => onTheme(theme === "dark" ? "light" : "dark")}
         >
           {theme === "dark" ? <MoonIcon /> : <SunIcon />}
+        </button>
+        {/* The way out. A control plane you can only close by remembering which
+            terminal started it, and what the command was called, is one you leave
+            running — so it lives next to the thing you look at, not in your shell. */}
+        <button
+          className="ghost icon"
+          title="Close Council and stop the server"
+          aria-label="Close Council and stop the server"
+          onClick={onClose}
+        >
+          <PowerIcon />
         </button>
       </div>
 

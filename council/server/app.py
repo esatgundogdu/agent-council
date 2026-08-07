@@ -77,7 +77,7 @@ def create_app(
         app.state.registry.on_change = app.state.hub.publish
         app.state.idle = idle
         watchdog = None
-        if idle is not None:
+        if idle is not None and idle.seconds > 0:
             # Asked live rather than tracked, so nothing can leave the daemon believing
             # a council is still going after the thing that was going has gone.
             idle.busy = lambda: any(
@@ -107,6 +107,43 @@ def create_app(
         import os
 
         return {"app": "council", "version": __version__, "pid": os.getpid()}
+
+    @app.post("/api/shutdown", dependencies=protected)
+    async def shutdown(request: Request) -> dict:
+        """Close the control plane from the control plane.
+
+        There has to be a way out that is not "remember which terminal, and what the
+        command was called". Idle shutdown is a safety net for the times you forget;
+        this is for the time you are finished and want it gone now.
+
+        A running council is not silently sacrificed to it. The first request says what
+        is still going and refuses; only a request that has seen that list and says so
+        goes ahead. Idle shutdown never gets that far — it simply waits.
+        """
+        payload = await _json_body(request) if await request.body() else {}
+        running = [
+            {"id": runtime.id, "task": runtime.spec.task.strip()[:80]}
+            for runtime in reg(request).sessions.values()
+            if runtime.state in ("starting", "running")
+        ]
+        if running and not payload.get("force"):
+            raise HTTPException(
+                409,
+                {
+                    "error": "councils are still running",
+                    "running": running,
+                    "retry": "send {\"force\": true} to stop them and shut down anyway",
+                },
+            )
+        stop = getattr(request.app.state, "idle", None)
+        if stop is None or stop.stop is None:
+            raise HTTPException(
+                501, "this daemon was not started in a way that can shut itself down"
+            )
+        # After the response, not during it: the browser asked, and it deserves to be
+        # told before the socket it asked over goes away.
+        asyncio.get_running_loop().call_later(0.25, stop.stop)
+        return {"stopping": True, "cancelled": running}
 
     @app.get("/api/catalog", dependencies=protected)
     async def catalog() -> dict:

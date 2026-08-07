@@ -70,9 +70,11 @@ def test_one_tab_of_several_closing_is_not_the_last_one(frozen):
     assert idle.spent() is False
 
 
-def test_the_watchdog_asks_the_server_to_stop_once(frozen):
+def test_the_watchdog_asks_the_server_to_stop_once():
+    # Real time, and a window small enough to pass in one tick. Not the `frozen` clock:
+    # with time held still the loop would be correct and never finish.
     stopped = []
-    idle = Idle(seconds=0.0, busy=lambda: False)
+    idle = Idle(seconds=0.0001, busy=lambda: False)
     idle.stop = lambda: stopped.append(True)
     asyncio.run(watch(idle, tick=0.001))
     assert stopped == [True], "asks once, then stops asking"
@@ -81,7 +83,6 @@ def test_the_watchdog_asks_the_server_to_stop_once(frozen):
 def test_the_shortcut_asks_for_a_daemon_that_lets_go():
     argv = shortcut.arguments(90.0)
     assert argv[:3] == ["-m", "council", "up"]
-    assert "--open" in argv
     assert argv[argv.index("--exit-when-idle") + 1] == "90.0"
     assert "--port" not in argv, "no port unless one was asked for"
     assert shortcut.arguments(90.0, port=9000)[-2:] == ["--port", "9000"]
@@ -101,4 +102,26 @@ def test_a_desktop_entry_is_written_where_it_was_asked_for(tmp_path):
     body = path.read_text(encoding="utf-8")
     assert path.parent == tmp_path
     assert "[Desktop Entry]" in body
-    assert "--exit-when-idle" in body and "--open" in body
+    assert "--exit-when-idle" in body and "--app" in body
+
+
+def test_the_close_button_works_on_a_daemon_that_never_idles():
+    """`--exit-when-idle` is opt-in; being able to close it from the UI is not.
+
+    `stop` and the idle policy live on the same object, so an `Idle(0)` that could not
+    be stopped would mean the Close button quietly doing nothing on every daemon
+    started by hand — which is most of them.
+    """
+    idle = Idle(seconds=0.0, busy=lambda: False)
+    stopped = []
+    idle.stop = lambda: stopped.append(True)
+    assert idle.spent() is False, "seconds=0 means never idle out"
+    idle.stop()
+    assert stopped == [True], "and yet it can still be told to stop"
+
+
+def test_the_shortcut_opens_a_window_rather_than_a_tab():
+    """Closing one tab of twenty is ambiguous; closing Council's own window is not."""
+    argv = shortcut.arguments(90.0)
+    assert "--app" in argv
+    assert "--open" not in argv, "--app supersedes it, and passing both is a contradiction"

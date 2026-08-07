@@ -1550,7 +1550,10 @@ button.icon:hover:not(:disabled) { color: var(--text); border-color: var(--rule)
 .dialog h3 { font-size: var(--t-head); font-weight: 600; }
 .dialog p { font-size: 0.88rem; margin-top: 0.6rem; }
 .dialog .cmd { margin-top: 0.7rem; }
-.dialog code {
+/* Scoped to `.cmd`: this is the treatment for a path on a line of its own. Applied to
+   every `code` in a dialog it also caught the ones inside a sentence, and turned each
+   into a full-width block that broke the sentence into three. */
+.dialog .cmd code {
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   color: var(--text-2);
@@ -1560,3 +1563,55 @@ button.icon:hover:not(:disabled) { color: var(--text); border-color: var(--rule)
   display: block;
   word-break: break-all;
 }
+/* A path named mid-sentence stays in the sentence. */
+.dialog p code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--text-2);
+}
+
+/* ── closing the control plane ───────────────────────────────────────────
+
+   The list of what is still running, shown in the dialog rather than described. A
+   sentence saying "some councils are running" asks the user to go and check; this
+   puts the thing being weighed in front of the button that decides it.  */
+.closing-list {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+.closing-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+}
+.closing-list code { font-size: var(--t-micro); color: var(--text-faint); }
+.closing-list span {
+  font-size: var(--t-meta);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* After the server has gone. Covers everything, because everything behind it is now
+   a picture of a control plane rather than one. */
+.gone {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  text-align: center;
+  background: var(--bg);
+}
+.gone > div { max-width: 30rem; }
+.gone h3 { font-size: var(--t-title); font-weight: 600; }
+.gone p { margin-top: 0.7rem; font-size: 0.9rem; }

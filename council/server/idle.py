@@ -28,10 +28,15 @@ from typing import Callable
 
 
 class Idle:
-    """The count of who is attached, and the clock that runs when nobody is."""
+    """The count of who is attached, the clock, and the way out.
+
+    Always present, even when idle shutdown is off (`seconds = 0`): `stop` is how the
+    **Close** button in the UI ends the daemon too, and that has to work whether or not
+    anybody asked for the automatic version.
+    """
 
     def __init__(self, seconds: float, busy: Callable[[], bool]) -> None:
-        #: How long everything has to stay quiet before the daemon lets go.
+        #: How long everything has to stay quiet before the daemon lets go. 0 = never.
         self.seconds = seconds
         #: Whether any council is still running. Asked every tick, never cached.
         self.busy = busy
@@ -52,6 +57,8 @@ class Idle:
 
     def spent(self) -> bool:
         """Has the daemon been left alone for long enough to go?"""
+        if self.seconds <= 0:
+            return False
         if self.streams or self.busy():
             # Not idle, so the clock has not started. Resetting it here rather than on
             # each event is what makes the grace period a period of *quiet* — a council

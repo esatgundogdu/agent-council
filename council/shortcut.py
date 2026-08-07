@@ -65,7 +65,7 @@ def desktop() -> Path:
 
 
 def arguments(idle_seconds: float, port: int | None = None) -> list[str]:
-    argv = ["-m", "council", "up", "--open", "--exit-when-idle", str(idle_seconds)]
+    argv = ["-m", "council", "up", "--app", "--exit-when-idle", str(idle_seconds)]
     if port:
         argv += ["--port", str(port)]
     return argv

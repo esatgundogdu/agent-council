@@ -75,6 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
     up.add_argument("--port", type=int, default=DEFAULT_PORT)
     up.add_argument("--open", action="store_true", help="also open a browser")
     up.add_argument(
+        "--app",
+        action="store_true",
+        help="open it in its own window, with no address bar or tabs, so closing "
+        "the window is closing Council. Falls back to an ordinary tab.",
+    )
+    up.add_argument(
         "--exit-when-idle",
         dest="idle_seconds",
         nargs="?",
@@ -254,11 +260,52 @@ def cmd_up(args) -> int:
         return EXIT_CONFIG
     link = daemon.url(record, with_token=True)
     print(f"Council control plane: {link}")
-    if args.open:
+    if args.app:
+        _open_window(link)
+    elif args.open:
         import webbrowser
 
         webbrowser.open(link)
     return EXIT_OK
+
+
+#: Chromium's app mode: one window, no address bar, no tabs, its own taskbar entry.
+#: The point is not that it looks tidier — it is that closing that window is an
+#: unambiguous "I am done", where closing one tab of twenty is not.
+_BROWSERS = (
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium",
+    "/usr/bin/microsoft-edge",
+)
+
+
+def _open_window(link: str) -> None:
+    """A window of its own where a Chromium browser is installed; a tab where not."""
+    import shutil
+    import subprocess
+
+    found = next(
+        (path for path in _BROWSERS if Path(path).is_file()),
+        None,
+    ) or shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("msedge")
+    if found:
+        try:
+            subprocess.Popen(
+                [found, f"--app={link}"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return
+        except OSError:
+            pass  # fall through to whatever the system considers a browser
+    import webbrowser
+
+    webbrowser.open(link)
 
 
 def cmd_shortcut(args) -> int:
