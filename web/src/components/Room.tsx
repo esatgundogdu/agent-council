@@ -1,26 +1,50 @@
+import { Suspense, lazy, useEffect, useState } from 'react'
+
 import { tintAt } from '../seats'
+import { RoomFlat } from './RoomFlat'
+import type { Plate } from './Room3D'
 import type { Panelist, SessionState } from '../types'
 
 /**
- * The council, in the room.
+ * The room the council is sitting in — in WebGL where that is wanted and possible, and
+ * in CSS 3D where it is not.
  *
- * A perspective scene rather than a diagram: a ground plane tilted back, a round table
- * drawn on it as a true circle — the tilt is what makes it an ellipse, so the geometry
- * is real rather than faked — and a figure at each seat. Whoever has the floor stands
- * up. In Phase 1 everyone is writing, because that is exactly what they are doing.
+ * `Room3D` is behind a dynamic import, so `three` lives in its own chunk that a browser
+ * only fetches when the 3D room is actually switched on. With it off, the application
+ * downloads exactly what it downloaded before.
  *
- * Built with CSS 3D and SVG on purpose, not WebGL:
- *
- *   - nothing is downloaded and nothing is added to the bundle;
- *   - every animation is `transform` and `opacity` only, so it composites on the GPU
- *     and never touches layout or paint;
- *   - there is no JS animation loop at all — the browser owns every frame, and a tab
- *     that is not visible stops rendering it for free;
- *   - seven figures is the ceiling, because a council has at most six panelists.
- *
- * All of it is inside `prefers-reduced-motion`, so a reader who has asked for stillness
- * gets the same scene with everyone in their final pose and nothing moving.
+ * Falling back is not an error path that happens to work: `RoomFlat` is a complete
+ * scene in its own right, so a machine with no WebGL, a laptop where the user turned
+ * 3D off, and a tab that lost its GL context all get the same information, drawn
+ * differently.
  */
+const Room3D = lazy(() => import('./Room3D').then((m) => ({ default: m.Room3D })))
+
+const KEY = 'council.room3d'
+
+function stored(): boolean {
+  try {
+    return window.localStorage.getItem(KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+/** WebGL can be absent, disabled by policy, or refused because too many contexts are
+    already live. Asking once, cheaply, is better than rendering a black rectangle. */
+function supported(): boolean {
+  try {
+    const canvas = document.createElement('canvas')
+    return Boolean(
+      canvas.getContext('webgl2') ||
+        canvas.getContext('webgl') ||
+        canvas.getContext('experimental-webgl'),
+    )
+  } catch {
+    return false
+  }
+}
+
 export function Room({
   state,
   onInspect,
@@ -30,168 +54,119 @@ export function Room({
   onInspect: (label: string) => void
   onChair: () => void
 }) {
-  const { panel, status, session } = state
-  const planning = status.phase === 1
+  const [on, setOn] = useState(stored)
+  const [can] = useState(supported)
+  const [plates, setPlates] = useState<Plate[]>([])
+  const solid = on && can
 
-  const seats: Seat[] = [
-    {
-      key: 'chair',
-      angle: -90,
-      tint: 'var(--text-2)',
-      initial: session.convened_by === 'agent' ? 'MA' : 'You',
-      name: session.convened_by === 'agent' ? 'main agent' : 'you',
-      note: 'set the task',
-      standing: false,
-      writing: false,
-      dropped: false,
-      chair: true,
-      onOpen: onChair,
-      title: 'The task and the brief this council was given',
-    },
-    ...panel.map((member, i) => ({
-      key: member.label,
-      angle: -90 + ((i + 1) * 360) / (panel.length + 1),
-      tint: tintAt(i),
-      initial: member.label.slice(-1),
-      name: member.name ?? member.label,
-      note: note(member, planning),
-      tone: tone(member),
-      standing: member.speaking && !planning,
-      writing: member.speaking && planning,
-      dropped: member.dropped,
-      chair: false,
-      onOpen: () => onInspect(member.label),
-      title: `${member.label} — everything it was sent, said and printed`,
-    })),
-  ]
-
-  // Painted back to front. `preserve-3d` sorts by depth on its own in every engine that
-  // matters, but a figure is a counter-rotated child of the ground plane and that is
-  // exactly the case where engines have historically disagreed — so the DOM order says
-  // it too, and neither has to be trusted alone.
-  const ordered = [...seats].sort((a, b) => Math.sin(rad(a.angle)) - Math.sin(rad(b.angle)))
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(KEY, on ? 'on' : 'off')
+    } catch {
+      /* not being able to remember the choice is not a reason to refuse to make it */
+    }
+  }, [on])
 
   return (
-    <div className="room" style={{ ['--seats' as string]: seats.length }}>
-      <div className="ground">
-        <div className="table-top" />
-        <div className="table-edge" />
-        {ordered.map((seat) => (
-          <Figure key={seat.key} seat={seat} />
-        ))}
-      </div>
-    </div>
-  )
-}
+    <div className={`room-shell${solid ? ' solid' : ''}`}>
+      {solid ? (
+        <div className="room3d-wrap">
+          {/* The flat room renders underneath while the chunk loads, so the seats never
+              blink out of existence on a slow first paint. */}
+          <Suspense fallback={<RoomFlat state={state} onInspect={onInspect} onChair={onChair} />}>
+            <Room3D
+              state={state}
+              onInspect={onInspect}
+              onChair={onChair}
+              onLayout={setPlates}
+            />
+          </Suspense>
+          {/* Names live in the DOM rather than the scene: text drawn into WebGL costs a
+              texture per label and is never as sharp as the browser's own. The scene
+              projects where each one goes, because the camera is the only thing that
+              actually knows. */}
+          <Nameplates state={state} plates={plates} />
+        </div>
+      ) : (
+        <RoomFlat state={state} onInspect={onInspect} onChair={onChair} />
+      )}
 
-interface Seat {
-  key: string
-  angle: number
-  tint: string
-  initial: string
-  name: string
-  note: string
-  tone?: string
-  standing: boolean
-  writing: boolean
-  dropped: boolean
-  chair: boolean
-  onOpen: () => void
-  title: string
-}
-
-//: The seating circle, in ground-plane pixels. The scene's tilt turns it into the
-//: ellipse you see, which is why these are circles and not ovals.
-//:
-//: Sized so the whole scene fits its box: at a 64° tilt a seat at the back lands
-//: `RING × cos 64°` ≈ 66px above the table's centre, and the figure standing there is
-//: 76px tall — which is what decides `.room`'s height and where the ground sits in it.
-const RING = 150
-
-const rad = (deg: number) => (deg * Math.PI) / 180
-
-function Figure({ seat }: { seat: Seat }) {
-  const x = RING * Math.cos(rad(seat.angle))
-  const y = RING * Math.sin(rad(seat.angle))
-  const classes = [
-    'seat3d',
-    // Captions go outwards from the table: below for the near half, above for the far
-    // half, where "below" is on the table itself and behind the figure in front of it.
-    Math.sin(rad(seat.angle)) < 0 && 'back',
-    seat.standing && 'standing',
-    seat.writing && 'writing',
-    seat.dropped && 'dropped',
-    seat.chair && 'chair',
-  ]
-    .filter(Boolean)
-    .join(' ')
-
-  return (
-    <div
-      className={classes}
-      style={{
-        color: seat.tint,
-        transform: `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`,
-      }}
-    >
-      {/* Flat on the table: the chair, the sheet being written on, and the shadow the
-          figure casts. These stay in the ground plane, which is what makes them read
-          as lying on it rather than standing in front of it. */}
-      <div className="chair-back" />
-      <div className="paper">
-        <i />
-        <i />
-        <i />
-      </div>
-
-      {/* Counter-rotated out of the ground plane, so it stands upright in a scene that
-          is tilted. Perspective still scales it by depth, which is the whole reason to
-          do this in 3D rather than draw an ellipse. */}
       <button
-        className="figure"
-        onClick={seat.onOpen}
-        title={seat.title}
-        aria-label={`${seat.name}. ${seat.note}.`}
+        className="room-toggle"
+        onClick={() => setOn(!on)}
+        disabled={!can}
+        title={
+          !can
+            ? 'This browser has no WebGL, so the flat room is the only one available'
+            : on
+              ? 'Switch to the flat room — no WebGL, no GPU'
+              : 'Switch to the 3D room'
+        }
       >
-        <span className="shadow" />
-        <Person chair={seat.chair} />
-        <span className="tag">
-          <b>{seat.name}</b>
-          <i className={seat.tone}>{seat.note}</i>
-        </span>
+        {solid ? '3D' : 'flat'}
       </button>
     </div>
   )
 }
 
 /**
- * One person, stylised.
+ * The captions, over the canvas.
  *
- * Two arms as separate groups so the near one can move while writing without the rest
- * of the body moving with it — the cheapest thing that reads as "writing" rather than
- * "vibrating".
+ * The scene projects each seat's head through its own camera and hands back where it
+ * landed; this only has to render text there. Guessing the positions with trigonometry
+ * put every name most of a seat away, because a perspective camera is not an
+ * orthographic one — the seat nearest the viewer is both lower and wider apart than a
+ * flat projection of the same circle says.
+ *
+ * The camera never moves, so this is recomputed on resize and on a pose change, not
+ * per frame: no DOM is written while the scene animates.
  */
-function Person({ chair }: { chair: boolean }) {
+function Nameplates({ state, plates }: { state: SessionState; plates: Plate[] }) {
+  const { panel, status, session } = state
+  const planning = status.phase === 1
+
+  const by = new Map(plates.map((plate) => [plate.key, plate]))
+  const seats = [
+    {
+      key: 'chair',
+      name: session.convened_by === 'agent' ? 'main agent' : 'you',
+      note: 'set the task',
+      tone: undefined as string | undefined,
+      tint: 'var(--text-2)',
+    },
+    ...panel.map((member, i) => ({
+      key: member.label,
+      name: member.name ?? member.label,
+      note: note(member, planning),
+      tone: tone(member),
+      tint: tintAt(i),
+    })),
+  ]
+
   return (
-    // No gradients and no `id` anywhere. A gradient would need a unique id per figure —
-    // four `<svg>`s sharing `id="torso"` means every one of them paints with the first
-    // one's stops — and `currentColor` inside a gradient stop does not resolve against
-    // the element that references it. Flat fills with opacity give the same depth and
-    // cannot break.
-    <svg className="person" viewBox="0 0 56 76" aria-hidden="true" focusable="false">
-      {/* Far arm — still. */}
-      <path className="arm far" d="M16 40 q-6 8 -5 17" />
-      {/* Torso and shoulders. */}
-      <path className="torso" d="M28 27 q11 1 14 14 l2 21 q-16 4 -32 0 l2 -21 q3 -13 14 -14 z" />
-      <path className="torso-shade" d="M28 62 q8 0 16 -1 l0 1 q-16 4 -32 0 l0 -1 q8 1 16 1 z" />
-      {/* Near arm — the one that writes. */}
-      <g className="arm-pivot">
-        <path className="arm near" d="M40 40 q7 7 3 15" />
-        <circle className="hand" cx="43" cy="56" r="3" />
-      </g>
-      <circle className="head" cx="28" cy="15" r="9.5" />
-      {chair && <circle className="badge-dot" cx="40" cy="8" r="3.4" />}
-    </svg>
+    <div className="nameplates">
+      {seats.map((seat) => {
+        const at = by.get(seat.key)
+        if (!at) return null
+        return (
+          <span
+            key={seat.key}
+            className={`plate${at.back ? ' back' : ''}`}
+            style={{
+              // Clamped to its own half-width at either edge, so a seat projected near
+              // the rim of a narrow canvas pulls the caption in rather than pushing the
+              // page sideways. The clamp never binds at desktop widths.
+              left: `clamp(calc(var(--plate-w) / 2), ${at.x}%, calc(100% - var(--plate-w) / 2))`,
+              top: `${at.y}%`,
+              color: seat.tint,
+            }}
+          >
+            <b>{seat.name}</b>
+            <i className={seat.tone}>{seat.note}</i>
+          </span>
+        )
+      })}
+    </div>
   )
 }
 

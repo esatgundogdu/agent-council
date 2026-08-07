@@ -13,6 +13,9 @@ node shot.mjs shots.example.json    # screenshots, one per entry, tabs and drawe
 node verify.mjs "<session url with ?token=>"
 ```
 
+`shot.mjs` passes `--enable-unsafe-swiftshader`, so the WebGL room renders headless too
+— on a software rasteriser, which is slower than the real thing and fine for a picture.
+
 `verify.mjs` reports the two things a screenshot cannot: horizontal overflow at seven
 widths from 1440 down to 375, and the contrast of every colour token against every
 surface it is used on, in both themes. Both numbers should come back clean —

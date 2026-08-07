@@ -215,13 +215,22 @@ figure opens that panelist and nothing else: the exact prompts it was sent, the 
 opened, what it said between them, what it replied, plus **console**, the raw output of
 each of its harness processes. Skip and drop live there too.
 
-The scene is CSS 3D and SVG rather than WebGL — nothing to download, nothing added to
-the bundle. The table is a true circle; the ground plane's tilt is what makes it read as
-an ellipse, so the perspective is computed rather than drawn, and the figures scale with
-depth for free. Every animation is `transform` and `opacity` only, so no frame of it
-touches layout or paint and there is no JS animation loop at all: measured on a live
-council with a panelist standing, the whole page spends **70ms of main thread over five
-seconds**, most of it the session clock. All of it sits inside `prefers-reduced-motion`.
+The scene is WebGL — a real round table, a chair and a figure per seat, one
+shadow-casting light. Every shape is a primitive, so there is no model to download, no
+texture and no loader; `three` itself sits in a chunk behind a dynamic import, and with
+the room switched off the application downloads exactly what it did before it existed.
+
+**The render loop stops.** Every frame asks whether anything still has to move — a pose
+still settling, a pen still writing, a speaker still breathing — and when the answer is
+no it cancels itself. Measured: a council in Phase 1 with three panelists writing draws
+164 frames in five seconds; a finished council draws **zero**, and costs 0.3ms of script
+over the same five seconds. It also stops when the tab is hidden or the canvas scrolls
+out of view, the pixel ratio is capped at 1.5, and `prefers-reduced-motion` goes
+straight to the final pose.
+
+The **3D / flat** switch in the corner of the room turns it off for good, and the choice
+sticks. Off, or on a machine with no WebGL, or after a lost GL context, the same scene
+is drawn in CSS 3D and SVG instead — not an error state, a second complete room.
 
 Dark by default, light behind the ☀/☾ in the corner; the choice sticks.
 

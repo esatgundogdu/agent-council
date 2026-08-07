@@ -515,6 +515,74 @@ label { display: block; }
 .tab .count { font-family: var(--font-mono); font-size: var(--t-micro); color: var(--text-faint); }
 .tab .pip { width: 5px; height: 5px; border-radius: 50%; background: var(--ready); }
 
+/* ── the room, in WebGL ─────────────────────────────────────
+
+   The canvas fills the shell; the names sit over it in the DOM, because text drawn
+   into WebGL costs a texture per label and never matches the browser's own rendering.
+   The camera does not move, so their positions are a fixed projection of the same
+   circle the scene uses — no per-frame DOM writes.  */
+
+.room-shell { position: relative; }
+.room-shell .room { height: 316px; }
+
+.room3d-wrap { position: relative; height: 372px; }
+.room3d { position: absolute; inset: 0; }
+.room3d canvas { display: block; width: 100%; height: 100%; cursor: pointer; }
+
+.nameplates { position: absolute; inset: 0; pointer-events: none; --plate-w: 9.5rem; }
+.plate {
+  position: absolute;
+  /* The projected point is the figure's head, so the caption hangs just under it.
+     `translate(-50%)` is what centres the box on that point — a negative margin as well
+     would centre it twice and put every name half a box to the left. */
+  transform: translate(-50%, 1.3rem);
+  width: var(--plate-w);
+  text-align: center;
+}
+/* Above the figure for the far side of the table, where below would be on the table. */
+.plate.back { transform: translate(-50%, -3.1rem); }
+.plate b { display: block; font-size: var(--t-meta); font-weight: 600; color: var(--text); }
+.plate i {
+  display: block;
+  font-style: normal;
+  font-size: var(--t-micro);
+  color: var(--text-faint);
+  line-height: 1.3;
+}
+.plate i.now { color: var(--live); }
+.plate i.ready { color: var(--ready); }
+.plate i.open { color: var(--continue); }
+.plate i.gone { color: var(--danger); }
+
+/* The way out. Quiet until you look for it, and it says which room you are in. */
+.room-toggle {
+  position: absolute;
+  right: 2rem;
+  top: 0.6rem;
+  z-index: 2;
+  padding: 0.15rem 0.5rem;
+  font-size: var(--t-micro);
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  background: none;
+  border-color: transparent;
+  opacity: 0.55;
+}
+.room-toggle:hover:not(:disabled) {
+  opacity: 1;
+  color: var(--text);
+  background: var(--bg-2);
+  border-color: var(--rule);
+}
+.room-toggle:disabled { opacity: 0.28; }
+
+@media (max-width: 720px) {
+  .room3d-wrap { height: 292px; }
+  .room-toggle { right: 1rem; }
+  .nameplates { --plate-w: 7.5rem; }
+  .plate b { font-size: var(--t-micro); }
+}
+
 /* ── the room ───────────────────────────────
 
    A tilted ground plane with a round table on it and a figure at each seat. The table

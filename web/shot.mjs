@@ -34,6 +34,10 @@ const chrome = spawn(CHROME, [
   '--no-default-browser-check',
   '--disable-extensions',
   '--force-device-scale-factor=1',
+  // Headless has no GPU, so WebGL falls back to a software rasteriser. Slower than the
+  // real thing and entirely fine for a screenshot.
+  '--enable-unsafe-swiftshader',
+  '--use-angle=swiftshader',
   'about:blank',
 ], { stdio: 'ignore' })
 
