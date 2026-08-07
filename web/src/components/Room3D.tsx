@@ -556,22 +556,32 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
     const lift = SEATED_Y + (STANDING_Y - SEATED_Y) * pose.rise
     // A speaker on its feet breathes; a seated one does not. Tiny, and it is what stops
     // a standing figure from looking like a prop.
-    const breath = pose.rise > 0.5 ? Math.sin(clock * 1.7) * 0.006 : 0
+    const breath = pose.rise > 0.5 ? Math.sin(clock * 1.7) * 0.009 : 0
     body.position.y = lift + breath
     // Seated, the body leans in a little; standing, it straightens.
     body.rotation.x = (1 - pose.rise) * 0.07
+    // Holding the floor is a slow sway and a hand that moves while it talks. Without it
+    // the speaker is just the one figure that happens to be upright, which is a state
+    // and not an action — and the whole reason the room exists is to show the action.
+    body.rotation.y = pose.rise * Math.sin(clock * 0.9) * 0.1
+    const talk = pose.rise * (0.34 + Math.sin(clock * 2.1) * 0.3)
     legs.scale.y = 0.55 + 0.45 * pose.rise
     legs.position.y = -0.05 * (1 - pose.rise)
     chair.visible = pose.gone < 0.5
 
-    // Writing: the near arm comes forward over the sheet and the hand travels along a
-    // line, then flicks back — a pen, not a metronome.
+    // Writing: the hand tracks across the sheet and flicks back to the margin at the end
+    // of the line, with a fast small scratch on top of the sweep. The shape of the cycle
+    // is the whole point — a plain sine here is a metronome, and a metronome does not
+    // look like anyone writing anything.
     const reach = pose.write
-    const swing = reach ? Math.sin(clock * 2.4) : 0
-    armR.rotation.x = -reach * (1.15 + swing * 0.06)
-    armR.rotation.z = reach * (0.18 + Math.sin(clock * 4.9) * 0.06)
-    armL.rotation.x = -reach * 0.55
-    head.rotation.x = reach * 0.34
+    const line = (clock * 0.42) % 1
+    const across = line < 0.86 ? line / 0.86 : 1 - (line - 0.86) / 0.14
+    armR.rotation.x = -reach * (1.06 + Math.sin(clock * 12) * 0.05) - talk
+    armR.rotation.z = reach * (0.4 - across * 0.5)
+    armL.rotation.x = -reach * 0.55 - pose.rise * 0.1
+    // The head follows the pen, and lifts a little at the end of each line.
+    head.rotation.x = reach * (0.34 - across * 0.06)
+    head.rotation.y = reach * (0.5 - across) * 0.3
     paperMat.opacity = reach * 0.96
     paper.visible = reach > 0.01
 
