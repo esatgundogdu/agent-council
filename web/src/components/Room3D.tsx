@@ -459,15 +459,40 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
   root.rotation.y = -rad + Math.PI / 2
   root.userData.seat = seat.key
 
+  // Everything the person is made of is `transparent`, because a dropped panelist fades
+  // out and a material that is not transparent ignores its own opacity — the fade was
+  // dead code, and the body jumped from solid to gone in one frame while the head and
+  // arms stayed behind. At opacity 1 this looks identical and costs a sorted draw.
   const skin = bin.keep(
-    new THREE.MeshStandardMaterial({ color: theme.skin, roughness: 0.78, metalness: 0 }),
+    new THREE.MeshStandardMaterial({
+      color: theme.skin,
+      roughness: 0.78,
+      metalness: 0,
+      transparent: true,
+    }),
   )
   const cloth = bin.keep(
-    new THREE.MeshStandardMaterial({ color: seat.colour, roughness: 0.72, metalness: 0.02 }),
+    new THREE.MeshStandardMaterial({
+      color: seat.colour,
+      roughness: 0.72,
+      metalness: 0.02,
+      transparent: true,
+    }),
+  )
+  // The legs used to share the chair's material, which is why they could not fade with
+  // the rest of the person: dimming them dimmed the furniture.
+  const trouser = bin.keep(
+    new THREE.MeshStandardMaterial({
+      color: theme.chair,
+      roughness: 0.8,
+      metalness: 0.03,
+      transparent: true,
+    }),
   )
   const chairMat = bin.keep(
     new THREE.MeshStandardMaterial({ color: theme.chair, roughness: 0.8, metalness: 0.03 }),
   )
+  const person = [skin, cloth, trouser]
 
   // The chair stays put; only the person moves.
   const chair = new THREE.Group()
@@ -515,7 +540,7 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
 
   const legs = new THREE.Group()
   for (const side of [-0.095, 0.095]) {
-    const leg = new THREE.Mesh(bin.keep(new THREE.CapsuleGeometry(0.068, 0.26, 5, 12)), chairMat)
+    const leg = new THREE.Mesh(bin.keep(new THREE.CapsuleGeometry(0.068, 0.26, 5, 12)), trouser)
     leg.position.set(side, -0.19, 0)
     leg.castShadow = true
     legs.add(leg)
@@ -568,7 +593,6 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
     const talk = pose.rise * (0.34 + Math.sin(clock * 2.1) * 0.3)
     legs.scale.y = 0.55 + 0.45 * pose.rise
     legs.position.y = -0.05 * (1 - pose.rise)
-    chair.visible = pose.gone < 0.5
 
     // Writing: the hand tracks across the sheet and flicks back to the margin at the end
     // of the line, with a fast small scratch on top of the sweep. The shape of the cycle
@@ -586,9 +610,11 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
     paperMat.opacity = reach * 0.96
     paper.visible = reach > 0.01
 
+    // Dropped: the person fades to a ghost and the chair is left standing empty, which
+    // is what "left the room" looks like. Every part fades together — before, only the
+    // torso was touched, and it was the one part that could not fade.
     const alpha = 1 - pose.gone * 0.72
-    torso.visible = alpha > 0.3
-    ;(torso.material as THREE.MeshStandardMaterial).opacity = alpha
+    for (const material of person) material.opacity = alpha
   }
 
   function update(dt: number, clock: number): boolean {

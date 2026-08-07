@@ -532,6 +532,16 @@ label { display: block; }
 .nameplates { position: absolute; inset: 0; pointer-events: none; --plate-w: 9.5rem; }
 .plate {
   position: absolute;
+  /* A button, because it is the only way into a seat's history from a keyboard — the
+     canvas underneath answers a raycast and nothing else. The container stays
+     `pointer-events: none` so the scene keeps the rest of its surface. */
+  pointer-events: auto;
+  padding: 0.1rem 0.2rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  font: inherit;
+  cursor: pointer;
   /* The projected point is the figure's head, so the caption hangs just under it.
      `translate(-50%)` is what centres the box on that point — a negative margin as well
      would centre it twice and put every name half a box to the left. */
@@ -549,6 +559,10 @@ label { display: block; }
   color: var(--text-faint);
   line-height: 1.3;
 }
+/* The caption sits on a scene rather than on a surface, so hover and focus need a
+   backing of their own to read against — the figures behind them are every colour. */
+.plate:hover, .plate:focus-visible { background: color-mix(in srgb, var(--bg) 78%, transparent); }
+.plate:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .plate i.now { color: var(--live); }
 .plate i.ready { color: var(--ready); }
 .plate i.open { color: var(--continue); }

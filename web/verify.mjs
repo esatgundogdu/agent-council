@@ -121,6 +121,56 @@ const contrast = await ev(`(() => {
 if (contrast.exceptionDetails) throw new Error(contrast.exceptionDetails.text)
 out.contrast = JSON.parse(contrast.result.value)
 
+// ── the room ───────────────────────────────────────────────────────────────
+// Three things a council found wrong with the 3D room, all of which were wrong because
+// nothing was looking at them. They are checked here rather than described in a comment.
+
+// Every seat reachable by keyboard. The canvas answers a raycast, which is a mouse and
+// nothing else; turning the room on must not take the Inspector away from anyone who
+// navigates by tab. Named, focusable, and Enter opens the drawer.
+const seats = await ev(`(() => {
+  const plates = [...document.querySelectorAll('.plate')]
+  if (!plates.length) return JSON.stringify({ skipped: 'no 3D room on this page' })
+  const named = plates.filter(p => (p.getAttribute('aria-label') || '').trim().length > 3)
+  const buttons = plates.filter(p => p.tagName === 'BUTTON' && !p.disabled)
+  plates[1].focus()
+  const focused = document.activeElement === plates[1]
+  // Enter, not click: the claim is that a keyboard can do this, and a synthetic click
+  // would pass even on a div with an onclick handler.
+  plates[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  plates[1].click()
+  return JSON.stringify({
+    plates: plates.length, named: named.length, focusable: buttons.length, focused,
+  })
+})()`)
+out.seats = JSON.parse(seats.result.value)
+// React has to render before the drawer exists to be found.
+await sleep(600)
+const drawer = await ev("JSON.stringify({ opensInspector: Boolean(document.querySelector('.drawer')) })")
+Object.assign(out.seats, JSON.parse(drawer.result.value))
+await ev("document.querySelector('.drawer-scrim')?.click()")
+
+// The probe must accept WebGL2 only. three has been WebGL2-only since r163, so a browser
+// with `webgl` but not `webgl2` cannot run the scene — and has to be turned away *before*
+// half a megabyte is fetched, since it is the machine least able to afford the download.
+// Patched into the page before the app boots, because that is when the probe runs.
+await send('Page.addScriptToEvaluateOnNewDocument', {
+  source: `(() => {
+    const real = HTMLCanvasElement.prototype.getContext
+    HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
+      return kind === 'webgl2' ? null : real.call(this, kind, ...rest)
+    }
+  })()`,
+}, sessionId)
+await load(1440)
+const webgl1 = await ev(`JSON.stringify({
+  fellBackToFlat: Boolean(document.querySelector('.room')) &&
+                  !document.querySelector('.room3d-wrap'),
+  chunkFetched: performance.getEntriesByType('resource')
+    .some(e => /Room3D/.test(e.name)),
+})`)
+out.webgl1 = JSON.parse(webgl1.result.value)
+
 console.log(JSON.stringify(out, null, 1))
 ws.close()
 chrome.kill()

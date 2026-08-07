@@ -30,16 +30,26 @@ function stored(): boolean {
   }
 }
 
-/** WebGL can be absent, disabled by policy, or refused because too many contexts are
-    already live. Asking once, cheaply, is better than rendering a black rectangle. */
+/**
+ * WebGL can be absent, disabled by policy, or refused because too many contexts are
+ * already live. Asking once, cheaply, is better than rendering a black rectangle.
+ *
+ * **WebGL 2 specifically.** three has been WebGL2-only since r163 and this is r185, so a
+ * browser that offers `webgl` but not `webgl2` cannot run the scene at all — and if the
+ * probe accepts it, the failure arrives in the worst possible order: the check passes,
+ * half a megabyte of `three` is downloaded, the renderer throws, and the machine least
+ * able to afford the download is the one left looking at an empty hole.
+ *
+ * The probe context is handed straight back. Contexts are a small fixed pool, and taking
+ * one to answer a yes/no question and never returning it is how the answer becomes no.
+ */
 function supported(): boolean {
   try {
     const canvas = document.createElement('canvas')
-    return Boolean(
-      canvas.getContext('webgl2') ||
-        canvas.getContext('webgl') ||
-        canvas.getContext('experimental-webgl'),
-    )
+    const gl = canvas.getContext('webgl2')
+    if (!gl) return false
+    gl.getExtension('WEBGL_lose_context')?.loseContext()
+    return true
   } catch {
     return false
   }
@@ -84,8 +94,13 @@ export function Room({
           {/* Names live in the DOM rather than the scene: text drawn into WebGL costs a
               texture per label and is never as sharp as the browser's own. The scene
               projects where each one goes, because the camera is the only thing that
-              actually knows. */}
-          <Nameplates state={state} plates={plates} />
+              actually knows. They are also the seats' only keyboard handle — see below. */}
+          <Nameplates
+            state={state}
+            plates={plates}
+            onInspect={onInspect}
+            onChair={onChair}
+          />
         </div>
       ) : (
         <RoomFlat state={state} onInspect={onInspect} onChair={onChair} />
@@ -110,7 +125,7 @@ export function Room({
 }
 
 /**
- * The captions, over the canvas.
+ * The captions, over the canvas — and the seats' only keyboard handle.
  *
  * The scene projects each seat's head through its own camera and hands back where it
  * landed; this only has to render text there. Guessing the positions with trigonometry
@@ -118,10 +133,27 @@ export function Room({
  * orthographic one — the seat nearest the viewer is both lower and wider apart than a
  * flat projection of the same circle says.
  *
+ * Each caption is a real button, and that is not decoration. In the flat room every seat
+ * is a `<button>`, so the panelist's history, console and plan are reachable by tab and
+ * Enter. A canvas has none of that: a raycast on a click is a mouse affordance and
+ * nothing else, so turning the 3D room on used to take the Inspector away from anyone
+ * navigating by keyboard or screen reader. The captions are already positioned exactly
+ * where each seat is, so they are the natural place to put it back.
+ *
  * The camera never moves, so this is recomputed on resize and on a pose change, not
  * per frame: no DOM is written while the scene animates.
  */
-function Nameplates({ state, plates }: { state: SessionState; plates: Plate[] }) {
+function Nameplates({
+  state,
+  plates,
+  onInspect,
+  onChair,
+}: {
+  state: SessionState
+  plates: Plate[]
+  onInspect: (label: string) => void
+  onChair: () => void
+}) {
   const { panel, status, session } = state
   const planning = status.phase === 1
 
@@ -133,6 +165,8 @@ function Nameplates({ state, plates }: { state: SessionState; plates: Plate[] })
       note: 'set the task',
       tone: undefined as string | undefined,
       tint: 'var(--text-2)',
+      onOpen: onChair,
+      title: 'The task and the brief this council was given',
     },
     ...panel.map((member, i) => ({
       key: member.label,
@@ -140,6 +174,8 @@ function Nameplates({ state, plates }: { state: SessionState; plates: Plate[] })
       note: note(member, planning),
       tone: tone(member),
       tint: tintAt(i),
+      onOpen: () => onInspect(member.label),
+      title: `${member.label} — everything it was sent, said and printed`,
     })),
   ]
 
@@ -149,9 +185,12 @@ function Nameplates({ state, plates }: { state: SessionState; plates: Plate[] })
         const at = by.get(seat.key)
         if (!at) return null
         return (
-          <span
+          <button
             key={seat.key}
             className={`plate${at.back ? ' back' : ''}`}
+            onClick={seat.onOpen}
+            title={seat.title}
+            aria-label={`${seat.name}. ${seat.note}.`}
             style={{
               // Clamped to its own half-width at either edge, so a seat projected near
               // the rim of a narrow canvas pulls the caption in rather than pushing the
@@ -163,7 +202,7 @@ function Nameplates({ state, plates }: { state: SessionState; plates: Plate[] })
           >
             <b>{seat.name}</b>
             <i className={seat.tone}>{seat.note}</i>
-          </span>
+          </button>
         )
       })}
     </div>
