@@ -89,12 +89,24 @@ async function main() {
   mkdirSync(outDir, { recursive: true })
 
   // The room only, so the strip is about the figures and not the page around them.
-  const { result: box } = await evaluate(
-    "JSON.stringify((({x,y,width,height}) => ({x,y,width,height}))" +
-    "(document.querySelector('.room3d-wrap').getBoundingClientRect()))")
-  const clip = { ...JSON.parse(box.value), scale: 1.5 }
+  // Measured every frame, not once: the discussion below the room grows while a council
+  // runs, and a clip fixed at the start slides off the canvas and films the masthead.
+  // Scrolled into view first, then measured, every frame. A live council pins its chat to
+  // the newest message, which walks the room up under the sticky masthead — and a strip
+  // shot from a rect measured while that is happening films the masthead sitting on top
+  // of half a table. The clip itself needs no scroll offset: the document does not
+  // scroll here, an inner column does, so a viewport rect is already a page rect.
+  const measure = async () => {
+    const { result } = await evaluate(
+      "(() => { const w = document.querySelector('.room3d-wrap');" +
+      " w.scrollIntoView({block: 'center'});" +
+      " const r = w.getBoundingClientRect();" +
+      " return JSON.stringify({x: r.x, y: r.y, width: r.width, height: r.height}) })()")
+    return { ...JSON.parse(result.value), scale: 1.5 }
+  }
 
   for (let i = 0; i < Number(count); i++) {
+    const clip = await measure()
     const { data } = await send('Page.captureScreenshot', { format: 'png', clip }, sessionId)
     const out = join(outDir, `f${String(i).padStart(2, '0')}.png`)
     writeFileSync(out, Buffer.from(data, 'base64'))

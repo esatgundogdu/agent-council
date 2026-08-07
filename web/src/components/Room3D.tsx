@@ -308,27 +308,28 @@ function build(
     onLayout(
       current.map((seat) => {
         const rad = (seat.angle * Math.PI) / 180
-        const near = Math.sin(rad) > 0
+        const head = seat.standing ? STANDING_Y + 0.62 : SEATED_Y + 0.6
+        const at = (radius: number) => {
+          probe.set(Math.cos(rad) * radius, head, Math.sin(rad) * radius)
+          probe.project(camera)
+          return { x: (probe.x * 0.5 + 0.5) * 100, y: (-probe.y * 0.5 + 0.5) * 100 }
+        }
+
         // A caption hangs below the point it is given. For the far seats that point is
         // the head and the caption lands clear of it; for the near seats — the ones the
         // camera is closest to, and so the biggest on screen — below the head is the
         // chest. Those are pushed a seat's depth further out from the table, so the
         // caption lands beside the figure on the floor rather than across it.
-        const r = near ? SEAT_R + 0.7 : SEAT_R
-        probe.set(
-          Math.cos(rad) * r,
-          seat.standing ? STANDING_Y + 0.62 : SEATED_Y + 0.6,
-          Math.sin(rad) * r,
-        )
-        probe.project(camera)
-        return {
-          key: seat.key,
-          x: (probe.x * 0.5 + 0.5) * 100,
-          y: (-probe.y * 0.5 + 0.5) * 100,
-          // Behind the table: the caption goes above the head rather than in front of
-          // it, where it would sit on the tabletop.
-          back: !near,
-        }
+        const near = Math.sin(rad) > 0
+        if (!near) return { key: seat.key, ...at(SEAT_R), back: true }
+
+        const out = at(SEAT_R + 0.7)
+        // Unless there is no floor left to put it on. An even number of seats — three
+        // panelists, or five — puts one of them dead in front of the lens, and that seat
+        // is close enough that below-the-head is off the bottom of the room entirely.
+        // It gets the far seats' treatment instead: above the head, over the empty table.
+        if (out.y <= 78) return { key: seat.key, ...out, back: false }
+        return { key: seat.key, ...at(SEAT_R), back: true }
       }),
     )
   }
