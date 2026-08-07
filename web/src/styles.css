@@ -515,84 +515,239 @@ label { display: block; }
 .tab .count { font-family: var(--font-mono); font-size: var(--t-micro); color: var(--text-faint); }
 .tab .pip { width: 5px; height: 5px; border-radius: 50%; background: var(--ready); }
 
-/* ── who is in the conversation ─────────────────────
+/* ── the room ───────────────────────────────
 
-   The group header. Same four facts the round table carried — who is here, who has
-   the floor, where each one stands, who convened it — in about ninety pixels rather
-   than two hundred and ninety, because the room below it needs the height.  */
+   A tilted ground plane with a round table on it and a figure at each seat. The table
+   is a true circle: the tilt is what makes it read as an ellipse, so the perspective
+   is real and the figures scale with depth for free.
 
-.participants {
-  display: flex;
-  align-items: stretch;
-  gap: 0.2rem;
-  padding: 0.5rem 2rem 0;
-  overflow-x: auto;
-  scrollbar-width: none;
+   Every animated property here is `transform` or `opacity`. Nothing animates a colour,
+   a size, a shadow or a filter, so no frame of this touches layout or paint — it is
+   composited, and a hidden tab renders none of it. There is no JS animation anywhere.  */
+
+.room {
+  position: relative;
+  height: 316px;
+  perspective: 1000px;
+  perspective-origin: 50% 38%;
+  /* `layout` only. `contain: paint` also *clips* to the box, which cut the head off
+     the figure at the back of the table and the caption off the one at the front. */
+  contain: layout;
+  margin-bottom: 0.1rem;
 }
-.participants::-webkit-scrollbar { display: none; }
-.participants .rule {
-  flex: none;
-  width: 1px;
-  background: var(--rule);
-  margin: 0.4rem 0.5rem;
+
+/* Low enough that the back row's heads clear the header, high enough that the front
+   row's captions clear the tabs. */
+.ground {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  transform: rotateX(64deg);
 }
-.participants .who {
-  flex: none;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-areas: 'avatar name' 'avatar state';
-  gap: 0 0.5rem;
-  align-items: center;
-  padding: 0.35rem 0.6rem;
-  border: 1px solid transparent;
-  border-radius: 999px;
+
+/* The table. A circle in the ground plane; the scene's tilt does the rest. */
+/* Lighter than the floor, so it reads as a surface catching the light rather than a
+   hole in it — which is what a darker fill looked like. */
+.table-top {
+  position: absolute;
+  left: -122px;
+  top: -122px;
+  width: 244px;
+  height: 244px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 40% 30%, var(--bg-4), var(--bg-3) 58%, var(--bg-2) 100%);
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
+}
+/* A second disc a little below it, so the table has thickness rather than being a
+   decal on the floor. */
+.table-edge {
+  position: absolute;
+  left: -122px;
+  top: -118px;
+  width: 244px;
+  height: 244px;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  transform: translateZ(-8px);
+}
+
+.seat3d { position: absolute; transform-style: preserve-3d; }
+
+/* Flat on the floor, in the ground plane. */
+.chair-back {
+  position: absolute;
+  left: -16px;
+  top: -4px;
+  width: 32px;
+  height: 24px;
+  border-radius: 8px 8px 12px 12px;
+  background: var(--bg-4);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  opacity: 0.9;
+}
+
+/* The sheet in front of each seat, with three ruled lines. Only while planning. */
+.paper {
+  position: absolute;
+  left: -15px;
+  top: -40px;
+  width: 30px;
+  height: 22px;
+  padding: 4px 4px 0;
+  border-radius: 2px;
+  background: var(--bg-2);
+  box-shadow: 0 0 0 1px var(--rule);
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.paper i {
+  display: block;
+  height: 1.5px;
+  margin-bottom: 3px;
+  border-radius: 1px;
+  background: var(--rule-strong);
+  transform-origin: left center;
+  transform: scaleX(0.2);
+}
+.writing .paper { opacity: 1; transform: scale(1); }
+
+/* Upright again. The figure is a child of the tilted plane so it is *positioned* in the
+   scene, then rotated back so it stands in it. */
+.figure {
+  position: absolute;
+  left: -28px;
+  bottom: -4px;
+  width: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: none;
-  text-align: left;
+  transform-origin: 50% 100%;
+  transform: rotateX(-64deg);
+  transform-style: preserve-3d;
+  cursor: pointer;
+  /* The seat carries the panelist's colour and the figure paints itself with
+     `currentColor` — but this is a <button>, and the global button rule sets `color`,
+     which was quietly turning every figure in the room grey. */
   color: inherit;
 }
-.participants .who:hover:not(:disabled) { background: var(--bg-2); border-color: var(--rule); }
-.participants .who.dropped { opacity: 0.45; }
-.participants .name {
-  grid-area: name;
-  font-size: var(--t-meta);
-  color: var(--text);
-  white-space: nowrap;
+.figure:hover:not(:disabled) { background: none; border-color: transparent; }
+.figure:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-sm); }
+
+.person { display: block; width: 56px; height: 76px; overflow: visible; }
+.person .head { fill: var(--bg-2); stroke: currentColor; stroke-width: 2.2; }
+.person .torso { fill: currentColor; fill-opacity: 0.9; }
+.person .torso-shade { fill: #000; fill-opacity: 0.18; }
+.person .arm { fill: none; stroke: currentColor; stroke-width: 5; stroke-linecap: round; }
+.person .hand { fill: currentColor; }
+.person .badge-dot { fill: var(--accent); opacity: 0.9; }
+.seat3d.dropped { opacity: 0.34; }
+
+/* The contact shadow. Scaled by the same states that move the figure, so standing up
+   lifts it off its own shadow. */
+.shadow {
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  width: 46px;
+  height: 12px;
+  margin-left: -23px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.42), transparent 70%);
+  transform: scale(1);
+  transition: transform 0.42s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.42s ease;
 }
-.participants .state {
-  grid-area: state;
+
+/* Wide enough for a model name, and it wraps rather than being cut — the captions were
+   being clipped to "writing its pl…". */
+.tag {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  /* Clear of the contact shadow, which sits at the figure's feet in exactly this
+     place and was painting over the name. */
+  margin-top: 0.55rem;
+  display: block;
+  width: 9.5rem;
+  text-align: center;
+  pointer-events: none;
+}
+.seat3d.back .tag { top: auto; bottom: 100%; margin: 0 0 0.3rem; }
+.tag b { display: block; font-size: var(--t-meta); font-weight: 600; color: var(--text); }
+.tag i {
+  display: block;
+  font-style: normal;
   font-size: var(--t-micro);
   color: var(--text-faint);
-  white-space: nowrap;
+  line-height: 1.3;
 }
-.participants .state.now { color: var(--live); }
-.participants .state.ready { color: var(--ready); }
-.participants .state.open { color: var(--continue); }
-.participants .state.gone { color: var(--danger); }
-.participants .who.chair .avatar { color: var(--text-2); border-color: var(--rule-strong); }
-
-/* One avatar treatment, used by the header, every message and the plan picker — the
-   same letter in the same colour in all three, which is what makes them one person. */
-.avatar {
-  grid-area: avatar;
-  font-weight: 600;
-  flex: none;
-  width: 1.9rem;
-  height: 1.9rem;
-  border-radius: 50%;
-  border: 1.5px solid currentColor;
-  display: grid;
-  place-items: center;
-  font-size: var(--t-meta);
-  font-weight: 600;
-  line-height: 1;
-}
-.avatar.dim { color: var(--text-faint); border-color: var(--rule); }
+.tag i.now { color: var(--live); }
+.tag i.ready { color: var(--ready); }
+.tag i.open { color: var(--continue); }
+.tag i.gone { color: var(--danger); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .participants .who.speaking .avatar { animation: pulse 1.8s ease-in-out infinite; }
+  /* Standing up. One transform, a spring that overshoots a little and settles — which
+     is the difference between a figure that stands and a figure that teleports. */
+  .figure {
+    transition: transform 0.42s cubic-bezier(0.22, 1.2, 0.36, 1);
+  }
+    .standing .figure {
+    transform: rotateX(-64deg) translateY(-14px) scale(1.07);
+  }
+  .standing .shadow { transform: scale(0.82); opacity: 0.55; }
+
+  /* Writing: the near forearm rocks, and the ruled lines fill in one after another.
+     Both are transforms on two small elements. */
+    .writing .arm-pivot {
+    transform-origin: 40px 40px;
+    animation: write 1.15s ease-in-out infinite;
+  }
+  .writing .paper i { animation: rule 3.4s ease-in-out infinite; }
+  .writing .paper i:nth-child(2) { animation-delay: 0.5s; }
+  .writing .paper i:nth-child(3) { animation-delay: 1s; }
+
+  /* The one who has the floor breathes very slightly. */
+  .standing .person { animation: breathe 3.6s ease-in-out infinite; }
 }
 
-@media (max-width: 900px) { .participants { padding-left: 1rem; padding-right: 1rem; } }
+/* Without the guard the scene still says everything: the speaker is simply already
+   standing, the writers already have their sheets, and nothing moves. */
+@media (prefers-reduced-motion: reduce) {
+    .standing .figure { transform: rotateX(-64deg) translateY(-14px) scale(1.07); }
+  .standing .shadow { transform: scale(0.82); opacity: 0.55; }
+  .writing .paper i { transform: scaleX(0.75); }
+}
+
+@keyframes write {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(4deg); }
+}
+@keyframes rule {
+  0%, 12% { transform: scaleX(0.06); }
+  46%, 88% { transform: scaleX(0.86); }
+  100% { transform: scaleX(0.06); }
+}
+@keyframes breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
+}
+
+/* A phone gets the same room, smaller. The figures stay legible because everything is
+   a transform on a fixed-size SVG rather than a layout that has to reflow. */
+@media (max-width: 720px) {
+  .room { height: 232px; perspective: 800px; }
+  .ground { transform: rotateX(64deg) scale(0.76); }
+  .tag { width: 7.5rem; }
+  .tag b { font-size: var(--t-micro); }
+}
 
 /* ── the discussion, as a conversation ──────────────────
 

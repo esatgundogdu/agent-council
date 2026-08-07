@@ -6,8 +6,8 @@ import { useSession } from '../useSession'
 import { Chat } from './Chat'
 import { Inspector } from './Inspector'
 import { Markdown } from './Markdown'
-import { Participants } from './Participants'
 import { Plans } from './Plans'
+import { Room } from './Room'
 import type { SessionState } from '../types'
 
 type Tab = 'chat' | 'plans' | 'digest' | 'setup'
@@ -153,13 +153,9 @@ export function SessionView({ id, onGone }: { id: string; onGone: () => void }) 
         )}
       </div>
 
-      {/* Who is in the conversation, along the top of it — the group header a chat has,
-          and the job the round table was doing in three times the height. */}
-      <Participants
-        state={state}
-        onInspect={setInspecting}
-        onChair={() => setTab('setup')}
-      />
+      {/* The room the conversation is happening in: the panel at a round table, whoever
+          convened it at the head, the one with the floor on its feet. */}
+      <Room state={state} onInspect={setInspecting} onChair={() => setTab('setup')} />
 
       <div className="tabs">
         {(Object.keys(TAB_LABEL) as Tab[])

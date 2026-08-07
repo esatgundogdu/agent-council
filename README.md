@@ -208,11 +208,20 @@ one gives you three tabs:
 - **what it was given** — the task verbatim, the brief and the proposal if there were
   any, and every setting this council is running under, including ones raised mid-run.
 
-The strip along the top is who is in the conversation: the convener first — the main
-agent when `/council` convened it, you when you did — then every panelist with where it
-stands. Clicking one opens it and nothing else: the exact prompts it was sent, the files
-it opened, what it said between them, what it replied, plus **console**, the raw output
-of each of its harness processes. Skip and drop live there too.
+Above the conversation is the room it is happening in: the panel at a round table,
+whoever convened it at the head — the main agent when `/council` did, you when you did.
+Whoever has the floor is on their feet; in Phase 1 everyone is writing. Clicking a
+figure opens that panelist and nothing else: the exact prompts it was sent, the files it
+opened, what it said between them, what it replied, plus **console**, the raw output of
+each of its harness processes. Skip and drop live there too.
+
+The scene is CSS 3D and SVG rather than WebGL — nothing to download, nothing added to
+the bundle. The table is a true circle; the ground plane's tilt is what makes it read as
+an ellipse, so the perspective is computed rather than drawn, and the figures scale with
+depth for free. Every animation is `transform` and `opacity` only, so no frame of it
+touches layout or paint and there is no JS animation loop at all: measured on a live
+council with a panelist standing, the whole page spends **70ms of main thread over five
+seconds**, most of it the session clock. All of it sits inside `prefers-reduced-motion`.
 
 Dark by default, light behind the ☀/☾ in the corner; the choice sticks.
 
