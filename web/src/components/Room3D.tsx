@@ -141,16 +141,17 @@ export interface Plate {
 const TABLE_R = 1.55
 const SEAT_R = 2.12
 
-/* The leg, in two segments with a knee between them, because a seated person is not a
-   standing one made shorter. These three numbers are the whole rig: standing, the hips
-   are a thigh plus a shin plus a foot off the floor; seated, the thigh is horizontal
-   and the hips are a shin plus a foot — which is also exactly how high the chair's
-   seat has to be for the feet to reach the ground. */
+/* One limb per leg, and it is the thigh. Seated it lies horizontal at exactly the
+   length below — that pose is the one the figures are read in nearly all the time, and
+   it is drawn as it is. Standing there is nothing below the knee to stand on, so the
+   same limb reaches the floor instead: the length is what changes, not the number of
+   parts. A shin and a foot were tried and were spindly at this size, and the joint they
+   needed was only ever visible for the one seat that happens to be on its feet. */
 const THIGH = 0.4
-const SHIN = 0.38
-const FOOT = 0.04
-const SEATED_Y = SHIN + FOOT
-const STANDING_Y = THIGH + SHIN + FOOT
+/** Hip height seated. Also the height of the chair's seat, so the two agree. */
+const SEATED_Y = 0.42
+/** Hip height standing — and therefore how long the leg has to be to reach the floor. */
+const STANDING_Y = 0.82
 /** How far back the hips slide to be on the seat rather than in front of it. */
 const SIT_BACK = 0.1
 /** The head's centre inside the body group — where a caption is measured from. */
@@ -602,43 +603,24 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
 
   body.add(torso, head, shoulders, armL, armR)
 
-  // Two hinges per leg. Standing they are straight; seated the hip swings the thigh
-  // forward to horizontal and the knee folds the shin back down, which is the shape
-  // that reads as sitting. Squashing a straight leg — what this used to do — reads as
-  // a short person standing in front of a chair with their feet inside it.
+  // One hinge per leg. Seated the hip swings the thigh forward to horizontal, which is
+  // the shape that reads as sitting; standing it points down and stretches to the floor.
+  // The capsule is built at seated length, so the pose it is seen in most is the one
+  // drawn exactly and the standing one is the stretch.
   const hips: THREE.Group[] = []
-  const knees: THREE.Group[] = []
   const legs = new THREE.Group()
   for (const side of [-0.1, 0.1]) {
     const hip = new THREE.Group()
     hip.position.set(side, 0, 0)
-
     const thigh = new THREE.Mesh(
       bin.keep(new THREE.CapsuleGeometry(0.075, THIGH - 0.15, 5, 12)),
       trouser,
     )
     thigh.position.y = -THIGH / 2
     thigh.castShadow = true
-
-    const knee = new THREE.Group()
-    knee.position.y = -THIGH
-    const shin = new THREE.Mesh(
-      bin.keep(new THREE.CapsuleGeometry(0.062, SHIN - 0.12, 5, 12)),
-      trouser,
-    )
-    shin.position.y = -SHIN / 2
-    shin.castShadow = true
-    // Pointing the way the figure faces, so a seated leg ends in a foot on the floor
-    // rather than a stump.
-    const foot = new THREE.Mesh(bin.keep(new THREE.BoxGeometry(0.11, FOOT, 0.2)), trouser)
-    foot.position.set(0, -SHIN - FOOT / 2, -0.05)
-    foot.castShadow = true
-    knee.add(shin, foot)
-
-    hip.add(thigh, knee)
+    hip.add(thigh)
     legs.add(hip)
     hips.push(hip)
-    knees.push(knee)
   }
   body.add(legs)
   root.add(body)
@@ -688,10 +670,14 @@ function makeFigure(seat: SeatState, theme: Theme, bin: Disposables): Figure {
     // and not an action — and the whole reason the room exists is to show the action.
     body.rotation.y = pose.rise * Math.sin(clock * 0.9) * 0.1
     const talk = pose.rise * (0.34 + Math.sin(clock * 2.1) * 0.3)
-    // Sitting is a right angle at the hip and another at the knee; standing is neither.
+    // Sitting is a right angle at the hip; standing is straight down, and long enough
+    // to reach the floor from a hip that is now twice as high.
     const sit = (1 - pose.rise) * (Math.PI / 2)
-    for (const hip of hips) hip.rotation.x = sit
-    for (const knee of knees) knee.rotation.x = -sit
+    const stretch = (THIGH + (STANDING_Y - THIGH) * pose.rise) / THIGH
+    for (const hip of hips) {
+      hip.rotation.x = sit
+      hip.scale.y = stretch
+    }
 
     // Writing: the hand tracks across the sheet and flicks back to the margin at the end
     // of the line, with a fast small scratch on top of the sweep. The shape of the cycle
