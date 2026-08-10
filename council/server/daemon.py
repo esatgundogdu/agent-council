@@ -171,6 +171,67 @@ def ensure_running(
     )
 
 
+#: Keep the log from growing for ever. Trimmed at startup, so a daemon never has to
+#: rotate a file it is in the middle of writing.
+MAX_LOG_BYTES = 512 * 1024
+
+
+def open_log():
+    """Append to the daemon log, at its usual place, without standing on it."""
+    return open_log_at(LOG_FILE)
+
+
+def open_log_at(path: str | Path):
+    """Append to a log without standing on it.
+
+    `open(..., "a")` asks Windows for a handle that lets others read and write but not
+    delete or rename. The daemon lives for hours and its log is the one file it holds
+    open the whole time — so for those hours `~/.council/daemon.log` cannot be removed,
+    and anything that tries is told *the process cannot access the file because it is
+    being used by another process*. Adding `FILE_SHARE_DELETE` costs nothing and takes
+    the file out of everyone's way; the daemon keeps writing to it either way.
+
+    Nothing to do on POSIX, where an open file has never stopped anyone deleting it.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _trim_log(path)
+    if os.name != "nt":
+        return path.open("a", encoding="utf-8")
+
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    GENERIC_WRITE = 0x40000000
+    SHARE_ALL = 0x00000001 | 0x00000002 | 0x00000004  # read | write | delete
+    OPEN_ALWAYS = 4
+    APPEND = 0x0004  # FILE_APPEND_DATA
+    INVALID = ctypes.c_void_p(-1).value
+
+    create = ctypes.windll.kernel32.CreateFileW
+    create.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+    ]
+    create.restype = wintypes.HANDLE
+    handle = create(str(path), GENERIC_WRITE | APPEND, SHARE_ALL, None, OPEN_ALWAYS, 0, None)
+    if handle == INVALID:
+        # Not worth failing to start a daemon over how its log is opened.
+        return path.open("a", encoding="utf-8")
+    return os.fdopen(msvcrt.open_osfhandle(handle, os.O_APPEND), "a", encoding="utf-8")
+
+
+def _trim_log(path: Path) -> None:
+    """Keep the tail. Done before opening, so nothing ever rewrites a live log."""
+    try:
+        if path.is_file() and path.stat().st_size > MAX_LOG_BYTES:
+            tail = path.read_bytes()[-MAX_LOG_BYTES // 2 :]
+            path.write_bytes(b"... earlier lines dropped ...\n" + tail)
+    except OSError:
+        pass  # a log that cannot be trimmed is not a reason to refuse to start
+
+
 def _spawn(port: int, token: str, idle_seconds: float = 0.0) -> None:
     daemon_argv = [
         sys.executable, "-m", "council.server",
@@ -184,7 +245,7 @@ def _spawn(port: int, token: str, idle_seconds: float = 0.0) -> None:
         sys.executable, "-m", "council.server.launcher",
         "--log", str(LOG_FILE), "--", *daemon_argv,
     ]
-    log = LOG_FILE.open("a", encoding="utf-8")
+    log = open_log()
     log.write(f"\n--- starting on port {port} at {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
     log.flush()
     # The daemon runs from the home directory — it is not tied to any one project —

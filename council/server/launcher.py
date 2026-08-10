@@ -35,7 +35,12 @@ def main(argv: list[str] | None = None) -> int:
         print("launcher: nothing to start", file=sys.stderr)
         return 2
 
-    log = open(args.log, "a", encoding="utf-8")
+    # Through the same opener `council up` uses. A plain `open(..., "a")` on Windows
+    # takes a handle that forbids deletion, and this one is inherited by the daemon —
+    # which then holds `~/.council/daemon.log` hostage for as long as it runs, so
+    # anything that tries to clear it is told the file is in use by another process.
+    from .daemon import open_log_at
+    log = open_log_at(args.log)
     kwargs: dict = {
         "stdin": subprocess.DEVNULL,
         "stdout": log,

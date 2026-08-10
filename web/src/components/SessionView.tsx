@@ -418,19 +418,17 @@ function Notices({ state }: { state: SessionState }) {
   const raw = [
     ...state.health.map((item) => ({
       tone: HEALTH_TONE[item.kind] ?? 'bad',
-      text: [item.kind.replace(/_/g, ' '), item.agent, item.detail]
-        .filter(Boolean)
-        .join(' · '),
+      text: describeHealth(item),
     })),
     ...state.compactions.map((item) => ({
       tone: 'info',
-      text: `transcript compacted through round ${item.through_round}${
-        item.agent ? ` by ${item.agent}` : ''
-      }`,
+      text: `The transcript was trimmed through round ${item.through_round} to keep it${
+        item.agent ? ` inside ${item.agent}’s context` : ' inside the panel’s context'
+      }.`,
     })),
     ...state.controls.map((item) => ({
-      tone: 'info',
-      text: `${item.action} by ${item.by}${item.detail ? ` · ${item.detail}` : ''}`,
+      tone: 'you',
+      text: describeControl(item),
     })),
   ]
   if (!raw.length) return null
@@ -446,15 +444,81 @@ function Notices({ state }: { state: SessionState }) {
   }
 
   return (
-    <div className="strip notices">
+    <div className="notices">
       {[...seen.values()].map((item, i) => (
-        <span className={`notice ${item.tone}`} key={i} title={item.text}>
-          {item.text.length > 160 ? `${item.text.slice(0, 160)}…` : item.text}
+        <p className={`notice ${item.tone}`} key={i} title={item.text}>
+          {item.text.length > 200 ? `${item.text.slice(0, 200)}…` : item.text}
           {item.count > 1 && <b> ×{item.count}</b>}
-        </span>
+        </p>
       ))}
     </div>
   )
+}
+
+/**
+ * What happened, in a sentence.
+ *
+ * These used to be printed as the event name with its underscores taken out, followed
+ * by the panelist and the raw detail, joined with dots — `early ready · all READY before
+ * min_rounds`. That is the log line the daemon writes, put on screen unchanged, and a
+ * reader who has not read the source has no way to know whether it is a problem, a
+ * report, or something they did themselves.
+ */
+function describeHealth(item: { kind: string; agent?: string; detail?: string }): string {
+  const who = item.agent ?? 'a panelist'
+  const why = item.detail ? ` ${item.detail}` : ''
+  switch (item.kind) {
+    case 'early_ready':
+      return 'Everyone said READY before the minimum number of rounds, so the discussion ' +
+        'carried on rather than stopping there.'
+    case 'fallback':
+      return `${who} could not resume its own harness session, so its turn was rebuilt ` +
+        `from the task and the transcript.${why}`
+    case 'dropped':
+      return `${who} was dropped from the panel.${why}`
+    case 'restored':
+      return `${who} was brought back into the panel.`
+    case 'skipped':
+      return `${who}’s turn was skipped.${why}`
+    case 'refused':
+      return `${who} refused to answer.${why}`
+    case 'turn_failed':
+      return `${who}’s turn failed.${why}`
+    case 'session_failed':
+      return `The council stopped with an error.${why}`
+    case 'compaction_failed':
+      return `The transcript could not be trimmed, so a panelist may run out of context.${why}`
+    default:
+      return [item.kind.replace(/_/g, ' '), item.agent, item.detail].filter(Boolean).join(' · ')
+  }
+}
+
+/** Something you (or the main agent) did to the council while it was running. */
+function describeControl(item: { action: string; by: string; detail?: string }): string {
+  const who = item.by === 'agent' ? 'The main agent' : 'You'
+  const what = item.detail ?? ''
+  switch (item.action) {
+    case 'chair':
+      return `${who} sent the whole panel an instruction.`
+    case 'extend':
+      return `${who} raised the round limit${what ? ` to ${what.replace(/\D+/g, '')}` : ''}.`
+    case 'pause':
+      return `${who} paused the discussion.`
+    case 'resume':
+      return `${who} let it continue.`
+    case 'stop':
+      return `${who} ended the discussion early.`
+    case 'digest':
+      return `${who} asked for the digest before the panel had finished.`
+    case 'skip':
+      return `${who} skipped ${what || 'a turn'}.`
+    case 'drop':
+      return `${who} dropped ${what || 'a panelist'} from the panel.`
+    case 'restore':
+      return `${who} brought ${what || 'a panelist'} back.`
+    default:
+      return `${who} used ${item.action}.${what ? ` ${what}` : ''}`
+  }
 }
 
 function Digest({ state }: { state: SessionState }) {

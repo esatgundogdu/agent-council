@@ -1340,19 +1340,33 @@ label { display: block; }
 /* ── health / controls ──────────────────────────────────── */
 
 .strip { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
-.notices { margin-bottom: 1.4rem; }
-.notice {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  line-height: 1.45;
-  padding: 0.28rem 0.55rem;
-  border: 1px solid currentColor;
-  color: var(--text-faint);
-  max-width: 100%;
+/* What happened to this council besides somebody's turn: a panelist that had to be
+   dropped, a transcript that had to be trimmed, an instruction you sent yourself.
+
+   It used to be a row of bordered monospace chips carrying the daemon's own log lines
+   — `early ready · all READY before min_rounds` — which is a boxed machine string
+   asking to be decoded, and which gave a warning and something you did the same weight
+   and the same shape. Now they are sentences in a quiet stack, marked down the side:
+   amber where something needs knowing, plain where it is a report, and accent where it
+   was you who did it. */
+.notices {
+  margin-bottom: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-width: var(--measure);
 }
-.notice b { font-weight: normal; opacity: 0.75; }
-.notice.bad { color: var(--danger); }
-.notice.warn { color: var(--continue); }
+.notice {
+  font-size: var(--t-meta);
+  line-height: 1.5;
+  color: var(--text-2);
+  border-left: 2px solid var(--rule-strong);
+  padding: 0.05rem 0 0.05rem 0.7rem;
+}
+.notice b { font-weight: 600; color: var(--text-faint); }
+.notice.bad { border-left-color: var(--danger); }
+.notice.warn { border-left-color: var(--continue); }
+.notice.you { border-left-color: var(--accent); }
 
 
 /* What the banner is left saying once the header, the rail and the table have each
