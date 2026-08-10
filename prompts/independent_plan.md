@@ -7,7 +7,11 @@ Work entirely on your own:
   docs, tests. Nobody has prepared a summary for you, and nothing has been filtered.
 - Form your own view of what the task requires. Where the task is ambiguous, say what
   you assumed and why, rather than silently picking one reading.
-- Do not modify anything. This is a read-only investigation.
+- Do not modify anything. This is a read-only investigation, and the tools that could
+  change the repository have been withheld rather than merely discouraged.
+- **Your reply is the plan.** There is no file to write it to and nobody waiting to
+  approve it: what you send back is what the rest of the panel reads. Do not spend the
+  opening on where the plan should go.
 
 Write a plan with exactly these sections:
 

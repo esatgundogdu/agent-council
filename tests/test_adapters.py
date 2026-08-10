@@ -387,3 +387,71 @@ def test_a_truncated_claude_stream_is_an_error_not_an_answer():
     text, _tokens, error, session = parse_claude_stream(raw)
     assert text == "" and error and "mid-stream" in error
     assert session == "s1"
+
+
+# ── the claude panelist is read-only, and the argv is the whole of how ─────────
+
+
+def _claude_argv(monkeypatch, **kwargs) -> list[str]:
+    """The command line the claude adapter would actually run."""
+    import asyncio
+
+    from council.adapters import claude_cli
+
+    seen: dict = {}
+
+    async def capture(argv, **rest):
+        seen["argv"] = argv
+        return claude_cli.Reply(ok=True, text="{}")
+
+    monkeypatch.setattr(claude_cli, "run_process", capture)
+    adapter = claude_cli.ClaudeAdapter(**kwargs)
+    asyncio.run(adapter.ask("prompt", cwd=".", timeout=60))
+    return seen["argv"]
+
+
+def test_a_panelist_cannot_touch_the_repository(monkeypatch):
+    """Every tool that could change a file, named on the command line.
+
+    A council reads; the main agent writes. That boundary is not enforced by asking
+    the model nicely — the prompt does say so, but a prompt is a preference. This list
+    is the enforcement, and in `-p` a denied tool is a refusal rather than a prompt
+    somebody could wave through.
+    """
+    argv = _claude_argv(monkeypatch)
+    denied = set(argv[argv.index("--disallowedTools") + 1].split(","))
+    assert {"Edit", "Write", "NotebookEdit", "Bash"} <= denied
+
+
+def test_the_panelist_is_not_put_in_plan_mode(monkeypatch):
+    """Plan mode waits for an approval that headless mode can never give.
+
+    Its contract is "propose the change and call `ExitPlanMode`", and under `-p` there
+    is nobody on the other end. The panelist went looking for that tool and opened its
+    plan by explaining that it could not use it — two of four plans in a real council
+    began that way. Read-only was never what this flag was buying; the deny list is.
+    """
+    argv = _claude_argv(monkeypatch)
+    assert "--permission-mode" not in argv
+    assert "plan" not in argv
+
+
+def test_a_resumed_turn_is_still_read_only(monkeypatch):
+    """The second call is the one that would quietly lose the guarantee."""
+    import asyncio
+
+    from council.adapters import claude_cli
+
+    seen: dict = {}
+
+    async def capture(argv, **rest):
+        seen["argv"] = argv
+        return claude_cli.Reply(ok=True, text="{}")
+
+    monkeypatch.setattr(claude_cli, "run_process", capture)
+    adapter = claude_cli.ClaudeAdapter()
+    asyncio.run(adapter.ask("prompt", cwd=".", timeout=60, session="abc123"))
+
+    argv = seen["argv"]
+    assert "--resume" in argv and "--disallowedTools" in argv
+    assert "--permission-mode" not in argv

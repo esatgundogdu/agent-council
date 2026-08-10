@@ -15,6 +15,11 @@ import json
 
 from .base import Adapter, Delta, LineParser, Reply, run_process
 
+#: Read-only, and this list is the whole of how that is enforced. Every path that could
+#: change the repository is named — the editors, and `Bash`, which is an editor with
+#: extra steps — so a panelist can explore with `Read`, `Glob` and `Grep` and do nothing
+#: else. A denied tool in `-p` mode is a hard refusal, not a prompt somebody could
+#: approve, which is what makes a list sufficient on its own.
 READ_ONLY_DENY = "Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch"
 
 
@@ -46,8 +51,15 @@ class ClaudeAdapter(Adapter):
             # --include-partial-messages adds the token-level text deltas.
             "--verbose",
             "--include-partial-messages",
-            "--permission-mode",
-            "plan",
+            # Deliberately *not* `--permission-mode plan`. Plan mode's contract is
+            # "propose the change and wait for approval", carried out by calling
+            # `ExitPlanMode` — and in `-p` there is nobody to approve anything. The
+            # panelist would go looking for that tool, fail to find a use for it, and
+            # spend the opening paragraph of its plan explaining the impasse instead of
+            # planning. Two of four plans in a real council opened that way.
+            #
+            # Read-only is not what plan mode was buying here anyway; the deny list is,
+            # and it does the job by itself.
             "--disallowedTools",
             READ_ONLY_DENY,
             "--add-dir",
